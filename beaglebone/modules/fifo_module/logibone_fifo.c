@@ -297,7 +297,7 @@ unsigned short int transfer_size  ;
 	if(read_mode == fifo){
 		while(transferred < count){
 			while(getNbFree() < transfer_size) schedule() ; 
-			memcpy(trgt_addr, src_addr, transfer_size);	
+			memcpy((void*)trgt_addr, (void*)src_addr, transfer_size);	
 			src_addr += transfer_size ;
 			transferred += transfer_size ;
 			if((count - transferred) < FIFO_BLOCK_SIZE){
@@ -308,7 +308,7 @@ unsigned short int transfer_size  ;
 		}
 		ret = transferred;
 	}else{
-		memcpy(trgt_addr, src_addr, count);
+		memcpy((void*)trgt_addr, (void*)src_addr, count);
 		ret = count ;
 	}
 	exit:
@@ -338,7 +338,7 @@ ssize_t LOGIBONE_fifo_read(struct file *filp, char *buf, size_t count, loff_t *f
 	if(read_mode == fifo){		
 		while(transferred < count){
 			while(getNbAvailable() < transfer_size) schedule() ; 
-			memcpy(trgt_addr, src_addr, transfer_size);	
+			memcpy((void*) trgt_addr, (void*)src_addr, transfer_size);	
 			trgt_addr += transfer_size ;
 			transferred += transfer_size ;
 			if((count - transferred) < FIFO_BLOCK_SIZE){
@@ -353,7 +353,7 @@ ssize_t LOGIBONE_fifo_read(struct file *filp, char *buf, size_t count, loff_t *f
 		}		
 		ret = transferred ;
 	}else{
-		memcpy(trgt_addr, src_addr, count);
+		memcpy((void*)trgt_addr, (void*)src_addr, count);
 		
 		if (copy_to_user(buf, readBuffer, count) )  {
 			ret = -1;
