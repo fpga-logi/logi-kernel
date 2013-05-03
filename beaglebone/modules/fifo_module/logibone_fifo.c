@@ -83,12 +83,16 @@
 //writing to fifo A reading from fifo B
 
 #define FPGA_BASE_ADDR	 0x09000000
-#define FIFO_SIZE_OFFSET	4
-#define NB_AVAILABLE_A_OFFSET	5
-#define NB_AVAILABLE_B_OFFSET	6
-#define PEEK_OFFSET	7
-#define READ_OFFSET	0
-#define WRITE_OFFSET	0
+#define FIFO_BASE_ADDR	 0x00000000
+#define FIFO_CMD_OFFSET  0x0400
+#define FIFO_SIZE_OFFSET	(FIFO_CMD_OFFSET)
+#define FIFO_NB_AVAILABLE_A_OFFSET	(FIFO_CMD_OFFSET + 1)
+#define FIFO_NB_AVAILABLE_B_OFFSET	(FIFO_CMD_OFFSET + 2)
+#define FIFO_PEEK_OFFSET	(FIFO_CMD_OFFSET + 3)
+#define FIFO_READ_OFFSET	0
+#define FIFO_WRITE_OFFSET	0
+#define FIFO_BLOCK_SIZE	1024  //512 * 16 bits
+
 
 #define ACCESS_SIZE	4  // fifo read write register is on 2 bits address space to allow 4 word burst
 
@@ -107,6 +111,9 @@ int setupGPMCNonMuxed(void) ;
 unsigned short int getNbFree(void);
 unsigned short int getNbAvailable(void);
 
+
+unsigned char * readBuffer ;
+unsigned char * writeBuffer ;
 
 enum LOGIBONE_fifo_read_mode{
 	fifo,
@@ -236,8 +243,8 @@ int setupGPMCNonMuxed(void){
 int LOGIBONE_fifo_open(struct inode *inode, struct file *filp)
 {
     read_mode = fifo ;
-    request_mem_region(FPGA_BASE_ADDR, 256 * sizeof(short), gDrvrName);
-    gpmc_cs1_pointer = ioremap_nocache(FPGA_BASE_ADDR, 256* sizeof(int));
+    request_mem_region(FPGA_BASE_ADDR, FIFO_BLOCK_SIZE*2 * sizeof(short), gDrvrName);
+    gpmc_cs1_pointer = ioremap_nocache(FPGA_BASE_ADDR, FIFO_BLOCK_SIZE*2* sizeof(int));
     fifo_size = gpmc_cs1_pointer[FIFO_SIZE_OFFSET] ;
     printk("%s: Open: module opened\n",gDrvrName);
     printk("fifo size : %d\n",fifo_size);
@@ -248,53 +255,60 @@ int LOGIBONE_fifo_release(struct inode *inode, struct file *filp)
 {
     printk("%s: Release: module released\n",gDrvrName);
     iounmap(gpmc_cs1_pointer);
-    release_mem_region(FPGA_BASE_ADDR, 256 * sizeof(short));
+    release_mem_region(FPGA_BASE_ADDR, FIFO_BLOCK_SIZE*2 * sizeof(short));
     return 0;
 }
 
 
 unsigned short int getNbAvailable(void){
-	//printk("getting nb available \n");
-	return gpmc_cs1_pointer[NB_AVAILABLE_B_OFFSET] ;  
+	return ( gpmc_cs1_pointer[FIFO_NB_AVAILABLE_B_OFFSET]*2) ;  
 }
 
 unsigned short int getNbFree(void){
-	//printk("getting nb free \n");
-	fifo_size = gpmc_cs1_pointer[FIFO_SIZE_OFFSET] ;
-	return fifo_size - gpmc_cs1_pointer[NB_AVAILABLE_A_OFFSET] ;
+	fifo_size =  gpmc_cs1_pointer[FIFO_SIZE_OFFSET] ;
+	return ((fifo_size -  gpmc_cs1_pointer[FIFO_NB_AVAILABLE_A_OFFSET])*2) ;
 }
 
 ssize_t LOGIBONE_fifo_write(struct file *filp, const char *buf, size_t count,
                        loff_t *f_pos)
 {
-	unsigned short int * writeBuffer ;
-	unsigned short int nbFree ;
-	unsigned short int index ;
-	unsigned int ret ;
-	//printk("writing to fifo \n");
-	writeBuffer = (unsigned short *) kmalloc(count, GFP_KERNEL);
+unsigned short int transfer_size  ;
+	ssize_t transferred = 0 ;
+	unsigned long src_addr, trgt_addr ;
+	unsigned int ret = 0;
+	if(count%2 != 0){
+		 printk("%s: LOGIBONE_fifo write: Transfer must be 16bits aligned.\n",gDrvrName);
+		 return -1;
+	}
+	if(count < FIFO_BLOCK_SIZE){
+		transfer_size = count ;
+	}else{
+		transfer_size = FIFO_BLOCK_SIZE ;
+	}
+	writeBuffer =  (unsigned char *) kmalloc (count, GFP_KERNEL);
+	trgt_addr = (unsigned long) gpmc_cs1_pointer ;
+	src_addr = (unsigned long) writeBuffer ;
 	// Now it is safe to copy the data from user space.
 	if (writeBuffer == NULL || copy_from_user(writeBuffer, buf, count) )  {
 		ret = -1;
-		printk("%s: LOGIBONE_fifo write: Failed copy to user.\n",gDrvrName);
+		printk("%s: LOGIBONE_fifo write: Failed copy from user.\n",gDrvrName);
 		goto exit;
 	}
 	if(read_mode == fifo){
-		nbFree = getNbFree();
-
-		if(nbFree == 0){
-			ret = -1 ; 
-			printk("No room to write in fifo \n");
-			goto exit;   
+		while(transferred < count){
+			while(getNbFree() < transfer_size) schedule() ; 
+			memcpy(trgt_addr, src_addr, transfer_size);	
+			src_addr += transfer_size ;
+			transferred += transfer_size ;
+			if((count - transferred) < FIFO_BLOCK_SIZE){
+				transfer_size = count - transferred ;
+			}else{
+				transfer_size = FIFO_BLOCK_SIZE ;
+			}
 		}
-		//printk("%d data slots are free to write \n", nbFree);
-		for(index = 0 ; index < nbFree && index < count/sizeof(unsigned short); index ++){
-			gpmc_cs1_pointer[WRITE_OFFSET] = writeBuffer[index];
-		}
-		
-		ret = index * sizeof(unsigned short);
+		ret = transferred;
 	}else{
-		memcpy((void *)gpmc_cs1_pointer, (void *)writeBuffer, count);
+		memcpy(trgt_addr, src_addr, count);
 		ret = count ;
 	}
 	exit:
@@ -303,80 +317,44 @@ ssize_t LOGIBONE_fifo_write(struct file *filp, const char *buf, size_t count,
 }
 
 
-#define BURST_SIZE 4
-#define MIN_TRANSFER 1024
 ssize_t LOGIBONE_fifo_read(struct file *filp, char *buf, size_t count, loff_t *f_pos)
 {
-	unsigned short int * readBuffer ;
-	int nbAvailable ;
-	int nbToRead, index = 0; 
-	int ret ;
-	nbToRead = count/sizeof(unsigned short) ;
-	readBuffer = (unsigned short int *) kmalloc(count/sizeof(unsigned short), GFP_KERNEL);
+	unsigned short int transfer_size ;
+	ssize_t transferred = 0 ;
+	unsigned long src_addr, trgt_addr ;
+	int ret = 0 ;
+	if(count%2 != 0){
+		 printk("%s: LOGIBONE_fifo read: Transfer must be 16bits aligned.\n",gDrvrName);
+		 return -1 ;
+	}
+	if(count < FIFO_BLOCK_SIZE){
+		transfer_size = count ;
+	}else{
+		transfer_size = FIFO_BLOCK_SIZE ;
+	}
+	readBuffer = (unsigned char *) kmalloc (count, GFP_KERNEL);
+	src_addr = (unsigned long) gpmc_cs1_pointer ;
+	trgt_addr = (unsigned long) readBuffer ;
 	if(read_mode == fifo){		
-		while(index < (count/sizeof(unsigned short))){
-			nbAvailable = getNbAvailable() ;
-			while(nbAvailable < MIN_TRANSFER && nbAvailable > fifo_size){			
-				if(nbAvailable >= fifo_size){
-					printk("error while reading nb available : %d \n", nbAvailable);			
-				}				
-				nbAvailable = getNbAvailable() ;
-			}
-			
-			if(nbAvailable > (count/sizeof(unsigned short)) - index){
-				nbAvailable =  ((count/sizeof(unsigned short)) - index) ;			
-			} 
-
-			while(nbAvailable%BURST_SIZE != 0){
-				nbAvailable -- ;			
-			}
-			while(nbAvailable > 0){
-				if(nbAvailable >= BURST_SIZE){
-					memcpy((void *) &readBuffer[index], (void *) &gpmc_cs1_pointer[READ_OFFSET], BURST_SIZE * sizeof(unsigned short)); //taking advantage of BURST_SIZE word bursts
-					nbAvailable -= BURST_SIZE ;				
-					index += BURST_SIZE ;
-				}else{
-					readBuffer[index] = gpmc_cs1_pointer[READ_OFFSET];
-					nbAvailable -- ;
-					index ++ ;
-				} 
-			}
-			schedule();
-		}		
-		
-/*		nbAvailable = getNbAvailable() ;
-		while(nbAvailable < (count/sizeof(unsigned short))/2){
-			schedule();			
-			nbAvailable = getNbAvailable() ;
-		}
-		//printk("%d data are available to read \n", nbAvailable);
-		if(nbAvailable < count/sizeof(unsigned short)){
-			nbToRead = nbAvailable;
-		}else{
-			nbToRead = count/sizeof(unsigned short);
-		}
-		while(nbToRead > 0){
-			if(nbToRead > BURST_SIZE){
-				memcpy((void *) &readBuffer[index], (void *) &gpmc_cs1_pointer[READ_OFFSET], BURST_SIZE * sizeof(unsigned short)); //taking advantage of BURST_SIZE word bursts
-				nbToRead -= BURST_SIZE ;				
-				index += BURST_SIZE ;
+		while(transferred < count){
+			while(getNbAvailable() < transfer_size) schedule() ; 
+			memcpy(trgt_addr, src_addr, transfer_size);	
+			trgt_addr += transfer_size ;
+			transferred += transfer_size ;
+			if((count - transferred) < FIFO_BLOCK_SIZE){
+				transfer_size = (count - transferred) ;
 			}else{
-				readBuffer[index] = gpmc_cs1_pointer[READ_OFFSET];
-				nbToRead -- ;
-				index ++ ;
-			} 
+				transfer_size = FIFO_BLOCK_SIZE ;
+			}
 		}
-*/
-		// Now it is safe to copy the data to user space.
-		if (index == 0 || copy_to_user(buf, readBuffer, (index * sizeof(unsigned short))) )  {
+		if (copy_to_user(buf, readBuffer, transferred) )  {
 			ret = -1;
 			goto exit;
-		}
-
-		
-		ret = index * sizeof(unsigned short) ;
+		}		
+		ret = transferred ;
 	}else{
-		memcpy((void *) readBuffer, (void *) gpmc_cs1_pointer, count);
+		memcpy(trgt_addr, src_addr, count);
+		
 		if (copy_to_user(buf, readBuffer, count) )  {
 			ret = -1;
 			goto exit;
@@ -388,18 +366,17 @@ ssize_t LOGIBONE_fifo_read(struct file *filp, char *buf, size_t count, loff_t *f
 	return ret;
 }
 
-
 long LOGIBONE_fifo_ioctl(struct file *filp, unsigned int cmd, unsigned long arg){
 		
 	switch(cmd){
 		case LOGIBONE_FIFO_RESET :
 			printk("fifo ioctl : reset \n");
-			gpmc_cs1_pointer[NB_AVAILABLE_A_OFFSET] = 0 ;
-			gpmc_cs1_pointer[NB_AVAILABLE_B_OFFSET] = 0 ;
+			gpmc_cs1_pointer[FIFO_NB_AVAILABLE_A_OFFSET] = 0 ;
+			gpmc_cs1_pointer[FIFO_NB_AVAILABLE_B_OFFSET] = 0 ;
 			return 0 ;
 		case LOGIBONE_FIFO_PEEK :
 			printk("fifo ioctl : peek \n");
-			return  gpmc_cs1_pointer[PEEK_OFFSET] ;
+			return  gpmc_cs1_pointer[FIFO_PEEK_OFFSET] ;
 		case LOGIBONE_FIFO_NB_FREE :
 			printk("fifo ioctl : free \n");
 			return getNbFree() ;
