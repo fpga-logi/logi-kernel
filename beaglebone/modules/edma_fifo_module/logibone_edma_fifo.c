@@ -24,17 +24,17 @@
 #define INTERRUPT_GPIO1 74
 
 #define CS_ON	0
-#define CS_OFF	5
+#define CS_OFF	4
 #define ADV_ON	0
-#define ADV_OFF	2
+#define ADV_OFF	1
 #define WR_CYC	5
-#define WR_ON	3
-#define WR_OFF 5
+#define WR_ON	2
+#define WR_OFF 4
 #define RD_CYC	5
-#define OE_ON	3
-#define OE_OFF 5
-#define RD_ACC_TIME 5
-#define WRDATAONADMUX 3  //number of cycle before taking control of data bus (when add/data multiplexing)
+#define OE_ON	2
+#define OE_OFF 4
+#define RD_ACC_TIME 4
+#define WRDATAONADMUX 2  //number of cycle before taking control of data bus (when add/data multiplexing)
 
 
 //       <--4-->

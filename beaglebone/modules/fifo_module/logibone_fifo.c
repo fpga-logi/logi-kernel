@@ -44,10 +44,10 @@
 #define CS_OFF	4
 #define ADV_ON	0
 #define ADV_OFF	1
-#define WR_CYC	4
+#define WR_CYC	5
 #define WR_ON	2
 #define WR_OFF ((CS_ON + CS_OFF)-WR_ON)
-#define RD_CYC	4
+#define RD_CYC	5
 #define OE_ON	2
 #define OE_OFF ((CS_ON + CS_OFF)-OE_ON)
 #define RD_ACC_TIME 4
