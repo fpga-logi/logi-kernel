@@ -11,6 +11,9 @@
 #include <linux/sched.h>
 #include <linux/memory.h>
 #include <linux/gpio.h>
+#include <linux/dma-mapping.h>
+#include <linux/edma.h>
+#include <linux/platform_data/edma.h>
 
 //device tree support
 #include <linux/of.h>
@@ -59,9 +62,23 @@ static unsigned char gDrvrMajor = 0 ;
 volatile unsigned short * gpmc_cs1_pointer ;
 volatile unsigned short * gpmc_cs1_virt ;
 
+int dma_ch ;
+dma_addr_t dmaphysbuf = 0;
+dma_addr_t dmapGpmcbuf = FPGA_BASE_ADDR;
+static volatile int irqraised1 = 0;
+
+unsigned char * readBuffer ;
+unsigned char * writeBuffer ;
 
 
 unsigned int fifo_size ;
+
+
+ssize_t readFifo(struct file *filp, char *buf, size_t count, loff_t *f_pos);
+ssize_t writeFifo(struct file *filp, const char *buf, size_t count, loff_t *f_pos);
+int edma_memtomemcpy(int count, unsigned long src_addr, unsigned long trgt_addr,  int event_queue,  enum address_mode mode);
+static void dma_callback(unsigned lch, u16 ch_status, void *data);
+
 
 static int LOGIBONE_fifo_open(struct inode *inode, struct file *filp);
 static int LOGIBONE_fifo_release(struct inode *inode, struct file *filp);
@@ -83,6 +100,19 @@ static struct file_operations LOGIBONE_fifo_ops = {
 int loadBitFile(const unsigned char * bitBuffer_user, unsigned int length);
 unsigned short int getNbFree(void);
 unsigned short int getNbAvailable(void);
+
+
+
+enum logibone_mode{
+	prog,	
+	fifo,
+	direct
+} this_mode;
+
+unsigned int fifo_size ;
+
+
+
 
 #define SSI_DELAY 1
 
@@ -211,8 +241,103 @@ int loadBitFile(const unsigned char * bitBuffer_user, const unsigned int length)
 }
 
 
+
+ssize_t writeFifo(struct file *filp, const char *buf, size_t count,
+                       loff_t *f_pos)
+{
+	unsigned short int transfer_size  ;
+	ssize_t transferred = 0 ;
+	unsigned long src_addr, trgt_addr ;
+	unsigned int ret = 0;
+	if(count%2 != 0){
+		 printk("%s: LOGIBONE_fifo write: Transfer must be 16bits aligned.\n",gDrvrName);
+		 return -1;
+	}
+	if(count < FIFO_BLOCK_SIZE){
+		transfer_size = count ;
+	}else{
+		transfer_size = FIFO_BLOCK_SIZE ;
+	}
+	writeBuffer =  (unsigned char *) dma_alloc_coherent (NULL, count, &dmaphysbuf, 0);
+	trgt_addr = (unsigned long) gpmc_cs1_pointer ;
+	src_addr = (unsigned long) dmaphysbuf ;
+	// Now it is safe to copy the data from user space.
+	if (writeBuffer == NULL || copy_from_user(writeBuffer, buf, count) )  {
+		ret = -1;
+		printk("%s: LOGIBONE_fifo write: Failed copy from user.\n",gDrvrName);
+		goto exit;
+	}
+	while(transferred < count){
+		while(getNbFree() < transfer_size) schedule() ; 
+		if(edma_memtomemcpy(transfer_size, src_addr , trgt_addr, 0, INCR) < 0){
+			printk("%s: LOGIBONE_fifo write: Failed to trigger EDMA transfer.\n",gDrvrName);		
+			ret = -1 ;			
+			goto exit;		
+		}
+		src_addr += transfer_size ;
+		transferred += transfer_size ;
+		if((count - transferred) < FIFO_BLOCK_SIZE){
+			transfer_size = count - transferred ;
+		}else{
+			transfer_size = FIFO_BLOCK_SIZE ;
+		}
+	}
+	ret = transferred;
+	exit:
+	dma_free_coherent(NULL, count, writeBuffer,
+				dmaphysbuf); // free coherent before copy to user
+	return (ret);
+}
+
+
+ssize_t readFifo(struct file *filp, char *buf, size_t count, loff_t *f_pos)
+{
+	unsigned short int transfer_size ;
+	ssize_t transferred = 0 ;
+	unsigned long src_addr, trgt_addr ;
+	int ret = 0 ;
+	if(count%2 != 0){
+		 printk("%s: LOGIBONE_fifo read: Transfer must be 16bits aligned.\n",gDrvrName);
+		 return -1 ;
+	}
+	if(count < FIFO_BLOCK_SIZE){
+		transfer_size = count ;
+	}else{
+		transfer_size = FIFO_BLOCK_SIZE ;
+	}
+	readBuffer = (unsigned char *) dma_alloc_coherent (NULL, count, &dmaphysbuf, 0);
+	src_addr = (unsigned long) gpmc_cs1_pointer ;
+	trgt_addr = (unsigned long) dmaphysbuf ;
+	while(transferred < count){
+		while(getNbAvailable() < transfer_size) schedule() ; 
+		if(edma_memtomemcpy(transfer_size, src_addr, trgt_addr, 0, INCR) < 0){
+			printk("%s: LOGIBONE_fifo read: Failed to trigger EDMA transfer.\n",gDrvrName);
+			goto exit ;
+		}	
+		trgt_addr += transfer_size ;
+		transferred += transfer_size ;
+		if((count - transferred) < FIFO_BLOCK_SIZE){
+			transfer_size = (count - transferred) ;
+		}else{
+			transfer_size = FIFO_BLOCK_SIZE ;
+		}
+	}
+	if (copy_to_user(buf, readBuffer, transferred) )  {
+		ret = -1;
+		goto exit;
+	}		
+	dma_free_coherent(NULL,  count, readBuffer,
+			dmaphysbuf);	
+	ret = transferred ;
+	exit:
+	return ret;
+}
+
+
+
 static int LOGIBONE_fifo_open(struct inode *inode, struct file *filp)
 {
+    this_mode = prog ;
     request_mem_region(FPGA_BASE_ADDR, FIFO_BLOCK_SIZE, gDrvrName); //TODO: may block EDMA transfer ...
     gpmc_cs1_virt = ioremap_nocache(FPGA_BASE_ADDR + FIFO_CMD_OFFSET, 16); //TODO: may block EDMA transfer ...
     gpmc_cs1_pointer = (unsigned short *) FPGA_BASE_ADDR ;
@@ -233,13 +358,32 @@ static int LOGIBONE_fifo_release(struct inode *inode, struct file *filp)
 static ssize_t LOGIBONE_fifo_write(struct file *filp, const char *buf, size_t count,
                        loff_t *f_pos)
 {
-	return loadBitFile(buf, count);
+	switch(this_mode){
+		case prog :
+			return loadBitFile(buf, count);
+		case fifo:
+			return writeFifo(filp, buf, count, f_pos);
+		case direct:
+			//return fifoWfrite(filp, buf, count, f_pos);
+		default:
+			return loadBitFile(buf, count);	
+	};
+	
 }
 
 
 static ssize_t LOGIBONE_fifo_read(struct file *filp, char *buf, size_t count, loff_t *f_pos)
 {
-	return -1 ;
+	switch(this_mode){
+		case prog :
+			return -1;
+		case fifo:
+			return readFifo(filp, buf, count, f_pos);
+		case direct:
+			//return fifoWfrite(filp, buf, count, f_pos);
+		default:
+			return -1 ;	
+	};
 }
 
 unsigned short int getNbAvailable(void){
@@ -278,9 +422,11 @@ static long LOGIBONE_fifo_ioctl(struct file *filp, unsigned int cmd, unsigned lo
 			return getSize() ;
 		case LOGIBONE_FIFO_MODE :
 			printk("calling fifo mode! \n");
+			this_mode = fifo ;
 			return 0 ;	
 		case LOGIBONE_DIRECT_MODE :
 			printk("calling direct mode! \n");
+			this_mode = direct ;
 			return 0 ;
 		default: /* redundant, as cmd was checked against MAXNR */
 			printk("unknown command %d \n", cmd);
@@ -309,6 +455,89 @@ static void LOGIBONE_fifo_exit(void)
     unregister_chrdev(gDrvrMajor, gDrvrName);
     printk(/*KERN_ALERT*/ "%s driver is unloaded\n", gDrvrName);
 }
+
+
+
+int edma_memtomemcpy(int count, unsigned long src_addr, unsigned long trgt_addr,  int event_queue,  enum address_mode mode)
+{
+	int result = 0;
+	unsigned int dma_ch = 0;
+	struct edmacc_param param_set;
+
+	result = edma_alloc_channel (EDMA_CHANNEL_ANY, dma_callback, NULL, event_queue);
+	if (result < 0) {
+		printk ("\nedma3_memtomemcpytest_dma::edma_alloc_channel failed for dma_ch, error:%d\n", result);
+		return result;
+	}
+
+	dma_ch = result;
+	if(count % 16 == 0){
+		edma_set_src (dma_ch, src_addr, mode, W128BIT);
+		edma_set_dest (dma_ch, trgt_addr, mode, W128BIT);
+	}else if(count % 8 == 0){
+		edma_set_src (dma_ch, src_addr, mode, W64BIT);
+		edma_set_dest (dma_ch, trgt_addr, mode, W64BIT);
+	}else if(count % 4 == 0){
+		edma_set_src (dma_ch, src_addr, mode, W32BIT);
+		edma_set_dest (dma_ch, trgt_addr, mode, W32BIT);
+	}else{
+		edma_set_src (dma_ch, src_addr, mode, W16BIT);
+		edma_set_dest (dma_ch, trgt_addr, mode, W16BIT);
+	}
+	edma_set_src_index (dma_ch, 0, 0); // always copy from same location
+	edma_set_dest_index (dma_ch, count, count); // increase by transfer size on each copy
+	/* A Sync Transfer Mode */
+	edma_set_transfer_params (dma_ch, count, 1, 1, 1, ASYNC); //one block of one fame of one array of count bytes
+
+	/* Enable the Interrupts on Channel 1 */
+	edma_read_slot (dma_ch, &param_set);
+	param_set.opt |= ITCINTEN;
+	param_set.opt |= TCINTEN;
+	param_set.opt |= EDMA_TCC(EDMA_CHAN_SLOT(dma_ch));
+	edma_write_slot (dma_ch, &param_set);
+
+	result = edma_start(dma_ch);
+	if (result != 0) {
+		printk ("edma copy for logibone_fifo failed \n");
+		
+	}
+	while (irqraised1 == 0u) schedule();
+	irqraised1 = 0u;
+	//irqraised1 = -1 ;
+
+	/* Check the status of the completed transfer */
+	if (irqraised1 < 0) {
+		/* Some error occured, break from the FOR loop. */
+		//printk ("edma copy for logibone_fifo: Event Miss Occured!!!\n");
+	}else{
+		//printk ("edma copy for logibone_fifo: Copy done !\n");
+	}
+	edma_stop(dma_ch);
+	edma_free_channel(dma_ch);
+
+	return result;
+}
+
+static void dma_callback(unsigned lch, u16 ch_status, void *data)
+{	
+	switch(ch_status) {
+	case DMA_COMPLETE:
+		irqraised1 = 1;
+		printk ("\n From Callback 1: Channel %d status is: %u\n",
+				lch, ch_status);
+		break;
+	case DMA_CC_ERROR:
+		irqraised1 = -1;
+		/*printk ("\nFrom Callback 1: DMA_CC_ERROR occured "
+				"on Channel %d\n", lch);*/
+		break;
+	default:
+		break;
+	}
+}
+
+
+
 
 
 static const struct of_device_id logibone_of_match[] = {
