@@ -80,8 +80,8 @@
 					0x090 0x00	/* gpmc_advn_ale.gpmc_advn_ale MODE0 | OUTPUT */
 					0x094 0x20	/* gpmc_oen_ren.gpmc_oen_ren MODE0 | OUTPUT */
 					0x098 0x20	/* gpmc_wen.gpmc_wen MODE0 | OUTPUT */
-					0x09C 0x00	/* gpmc_ben0_cle.gpmc_ben0_cle MODE0 | OUTPUT */
-					0x078 0x00	/* gpmc_ben1_cle.gpmc_ben1_cle MODE0 | OUTPUT */
+					0x09C 0x20	/* gpmc_ben0_cle.gpmc_ben0_cle MODE0 | OUTPUT */
+					0x078 0x20	/* gpmc_ben1_cle.gpmc_ben1_cle MODE0 | OUTPUT */
 				>;
 			};
 		
@@ -146,24 +146,24 @@
 				gpmc,sync-clk-ps = <10000>;	/* CONFIG2 */
 
 				gpmc,cs-on-ns = <0>;
-				gpmc,cs-rd-off-ns = <40>;
-				gpmc,cs-wr-off-ns = <40>;
+				gpmc,cs-rd-off-ns = <50>;
+				gpmc,cs-wr-off-ns = <50>;
 
 				gpmc,adv-on-ns = <0>;		/* CONFIG3 */
-				gpmc,adv-rd-off-ns = <10>;
-				gpmc,adv-wr-off-ns = <10>;
+				gpmc,adv-rd-off-ns = <20>;
+				gpmc,adv-wr-off-ns = <20>;
 
-				gpmc,we-on-ns = <20>;		/* CONFIG4 */
-				gpmc,we-off-ns = <40>;
-				gpmc,oe-on-ns = <20>;
-				gpmc,oe-off-ns = <40>;
+				gpmc,we-on-ns = <30>;		/* CONFIG4 */
+				gpmc,we-off-ns = <50>;
+				gpmc,oe-on-ns = <30>;
+				gpmc,oe-off-ns = <50>;
 
 				gpmc,page-burst-access-ns = <20>;	/* CONFIG 5 */
-				gpmc,access-ns = <140>;
-				gpmc,rd-cycle-ns = <50>;
-				gpmc,wr-cycle-ns = <50>;
-				gpmc,wr-access-ns = <100>;		/* CONFIG 6 */
-				gpmc,wr-data-mux-bus-ns = <20>;
+				gpmc,access-ns = <50>;
+				gpmc,rd-cycle-ns = <60>;
+				gpmc,wr-cycle-ns = <60>;
+				gpmc,wr-access-ns = <0>;		/* CONFIG 6 */
+				gpmc,wr-data-mux-bus-ns = <30>;
 
 				gpmc,bus-turnaround-ns = <0>;		/* CONFIG6:3:0 = 4 */
 				gpmc,cycle2cycle-samecsen;		/* CONFIG6:7 = 1 */

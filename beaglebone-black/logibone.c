@@ -238,6 +238,7 @@ int loadBitFile(const unsigned char * bitBuffer_user, const unsigned int length)
 	printk("Starting configuration of %d bits \n", length*8);
 	for(i = 0 ; i < length ; i ++){
 		serialConfigWriteByte(bitBuffer[i]);	
+		schedule();
 	}
 	printk("Waiting for done pin to go high \n");
 	while(timer < 50 && gpio_get_value(SSI_DONE) == 0){
@@ -262,8 +263,6 @@ int loadBitFile(const unsigned char * bitBuffer_user, const unsigned int length)
 
 	kfree(bitBuffer) ;
 	return length ;
-
-
 }
 
 
@@ -381,7 +380,7 @@ static int LOGIBONE_fifo_open(struct inode *inode, struct file *filp)
 		request_mem_region((unsigned long) fifo_dev->base_addr, FIFO_BLOCK_SIZE, gDrvrName); //TODO: may block EDMA transfer ...
 		fifo_dev->virt_addr = ioremap_nocache((((unsigned long) fifo_dev->base_addr) + FIFO_CMD_OFFSET ), 16); //TODO: may block EDMA transfer ...
 		fifo_dev->size = fifo_dev->virt_addr[FIFO_SIZE_OFFSET] ;
-		printk("%s: Open: module opened, with fifo size %d @%x\n",gDrvrName, fifo_dev->size, fifo_dev->virt_addr);
+		printk("%s: Open: module opened, with fifo size %d @%x\n",gDrvrName, fifo_dev->size, (unsigned long) fifo_dev->virt_addr);
 	}
 /*
 	request_mem_region(FPGA_BASE_ADDR, FIFO_BLOCK_SIZE, gDrvrName); //TODO: may block EDMA transfer ...
@@ -397,13 +396,11 @@ static int LOGIBONE_fifo_release(struct inode *inode, struct file *filp)
 {
 	struct logibone_device * dev ;
 	dev = container_of(inode->i_cdev, struct logibone_device, cdev);
-	if(dev->type == main){
+	if(dev->type == fifo){
 		iounmap((dev->data.fifo).virt_addr);
-	release_mem_region(((unsigned long) (dev->data.fifo).base_addr), FIFO_BLOCK_SIZE );
-	printk("%s: Release: module released\n",gDrvrName);	
+		release_mem_region(((unsigned long) (dev->data.fifo).base_addr), FIFO_BLOCK_SIZE );
+		printk("%s: Release: module released\n",gDrvrName);	
 	}
-	
-
 	/*
 	iounmap(gpmc_cs1_virt);
 	release_mem_region(FPGA_BASE_ADDR, FIFO_BLOCK_SIZE );
@@ -448,8 +445,8 @@ unsigned short int getNbAvailable(struct logibone_fifo * fifop){
 }
 
 unsigned short int getNbFree(struct logibone_fifo * fifop){
-	fifo_size = fifop->virt_addr[FIFO_SIZE_OFFSET] ;
-	return ((fifo_size - fifop->virt_addr[FIFO_NB_AVAILABLE_A_OFFSET])*2) ;
+	fifo_size = getSize(fifop) ;
+	return (fifo_size - (fifop->virt_addr[FIFO_NB_AVAILABLE_A_OFFSET])*2) ;
 }
 
 unsigned short int getSize(struct logibone_fifo * fifop){
@@ -531,7 +528,7 @@ static int LOGIBONE_fifo_init(void)
 	struct logibone_main * newMain ;
         dev_t dev = 0;
 	result = alloc_chrdev_region(&dev, 0, nb_fifo,
-                                "logibone");
+                                gDrvrName);
         gDrvrMajor = MAJOR(dev);
         if (result < 0) {
                  printk(KERN_ALERT "Registering char device failed with %d\n", gDrvrMajor);
@@ -561,7 +558,7 @@ static int LOGIBONE_fifo_init(void)
 		newFifo = &(logibone_devices[i].data.fifo);
                	newFifo->id = i;
 		newFifo->size = 0;
-                newFifo->base_addr = (unsigned short *) (FPGA_BASE_ADDR + ((i-1)* FIFO_BLOCK_SIZE) ); //todo need to check on that ...
+                newFifo->base_addr = (unsigned short *) (FPGA_BASE_ADDR + ((i-1)* FIFO_BLOCK_SIZE)); //todo need to check on that ...
     		cdev_init(&(logibone_devices[i].cdev), &LOGIBONE_fifo_ops);
         	(logibone_devices[i].cdev).owner = THIS_MODULE;
         	(logibone_devices[i].cdev).ops = &LOGIBONE_fifo_ops;
@@ -644,8 +641,8 @@ static void dma_callback(unsigned lch, u16 ch_status, void *data)
 	switch(ch_status) {
 	case DMA_COMPLETE:
 		irqraised1 = 1;
-		printk ("\n From Callback 1: Channel %d status is: %u\n",
-				lch, ch_status);
+		/*printk ("\n From Callback 1: Channel %d status is: %u\n",
+				lch, ch_status);*/
 		break;
 	case DMA_CC_ERROR:
 		irqraised1 = -1;
