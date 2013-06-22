@@ -54,7 +54,7 @@
 #define FIFO_WRITE_OFFSET	0
 #define FIFO_BLOCK_SIZE	1024  //512 * 16 bits
 
-
+#define DEVICE_NAME "logibone"
 
 unsigned int nb_fifo = 1 ;
 
@@ -62,7 +62,7 @@ module_param(nb_fifo , int, S_IRUGO);
 MODULE_PARM_DESC(nb_fifo, "number of fifo to instantiate");
 
 
-static char * gDrvrName = "logibone";
+static char * gDrvrName = DEVICE_NAME;
 static unsigned char gDrvrMajor = 0 ;
 
 
@@ -130,6 +130,8 @@ struct logibone_device{
 };
 
 
+struct device * main_device ;
+struct class * logibone_class ;
 struct logibone_device * logibone_devices ;
 
 
@@ -539,6 +541,9 @@ static int LOGIBONE_fifo_init(void)
                 result = -ENOMEM;
                 goto fail;  /* Make this more graceful */
         }
+
+	logibone_class = class_create(THIS_MODULE,DEVICE_NAME);
+
         memset(logibone_devices, 0, nb_fifo * sizeof(struct logibone_device));
 	
 	/*Initializing main mdevice for prog and direct memory access*/
@@ -546,6 +551,12 @@ static int LOGIBONE_fifo_init(void)
 	logibone_devices[0].type = main ;
 	newMain = &(logibone_devices[0].data.main);
 	newMain->base_addr = (unsigned short *) (FPGA_BASE_ADDR); //todo need to check on that ...
+	main_device = device_create(logibone_class, NULL, devno, NULL, DEVICE_NAME);	// should create /dev entry for main node
+	if(main_device == NULL){
+		class_destroy(logibone_class);
+   	 	result = -ENOMEM;
+                goto fail;
+	}
 	cdev_init(&(logibone_devices[0].cdev), &LOGIBONE_fifo_ops);
 	logibone_devices[0].cdev.owner = THIS_MODULE;
 	logibone_devices[0].cdev.ops = &LOGIBONE_fifo_ops;
@@ -559,11 +570,12 @@ static int LOGIBONE_fifo_init(void)
                	newFifo->id = i;
 		newFifo->size = 0;
                 newFifo->base_addr = (unsigned short *) (FPGA_BASE_ADDR + ((i-1)* FIFO_BLOCK_SIZE)); //todo need to check on that ...
+		device_create(logibone_class, main_device, devno, NULL, "logibone%d", i); // should create /dev entry for each device as child of main node
     		cdev_init(&(logibone_devices[i].cdev), &LOGIBONE_fifo_ops);
         	(logibone_devices[i].cdev).owner = THIS_MODULE;
         	(logibone_devices[i].cdev).ops = &LOGIBONE_fifo_ops;
         	cdev_add(&(logibone_devices[i].cdev), devno, 1);
-		printk(KERN_INFO "'mknod /dev/%s%d c %d %d'.\n", gDrvrName, i , gDrvrMajor, i);
+		//printk(KERN_INFO "'mknod /dev/%s%d c %d %d'.\n", gDrvrName, i , gDrvrMajor, i);
 	}
         return 0;
 
