@@ -80,7 +80,7 @@ unsigned int fifo_size ;
 
 ssize_t readFifo(struct file *filp, char *buf, size_t count, loff_t *f_pos);
 ssize_t writeFifo(struct file *filp, const char *buf, size_t count, loff_t *f_pos);
-int edma_memtomemcpy(int count, unsigned long src_addr, unsigned long trgt_addr,  int event_queue,  enum address_mode mode);
+int edma_memtomemcpy(int count, unsigned long src_addr, unsigned long trgt_addr,  int event_queue,  enum address_mode src_mode,  enum address_mode trgt_mode);
 static void dma_callback(unsigned lch, u16 ch_status, void *data);
 
 
@@ -287,6 +287,10 @@ ssize_t writeFifo(struct file *filp, const char *buf, size_t count,
 		transfer_size = FIFO_BLOCK_SIZE ;
 	}
 	writeBuffer =  (unsigned char *) dma_alloc_coherent (NULL, count, &dmaphysbuf, 0);
+	if(writeBuffer == NULL){
+		printk("failed to alloacted DMA buffer \n");
+		return -1 ;	
+	}
 	trgt_addr = (unsigned long) fifo_to_write->base_addr ;
 	src_addr = (unsigned long) dmaphysbuf ;
 	// Now it is safe to copy the data from user space.
@@ -297,7 +301,7 @@ ssize_t writeFifo(struct file *filp, const char *buf, size_t count,
 	}
 	while(transferred < count){
 		while(getNbFree(fifo_to_write) < transfer_size) schedule() ; 
-		if(edma_memtomemcpy(transfer_size, src_addr , trgt_addr, 0, INCR) < 0){
+		if(edma_memtomemcpy(transfer_size, src_addr , trgt_addr, 0, INCR, INCR) < 0){
 			printk("%s: LOGIBONE_fifo write: Failed to trigger EDMA transfer.\n",gDrvrName);		
 			ret = -1 ;			
 			goto exit;		
@@ -336,11 +340,15 @@ ssize_t readFifo(struct file *filp, char *buf, size_t count, loff_t *f_pos)
 		transfer_size = FIFO_BLOCK_SIZE ;
 	}
 	readBuffer = (unsigned char *) dma_alloc_coherent (NULL, count, &dmaphysbuf, 0);
+	if(readBuffer == NULL){
+		printk("failed to alloacted DMA buffer \n");
+		return -1 ;	
+	}
 	src_addr = (unsigned long) fifo_to_read->base_addr;
 	trgt_addr = (unsigned long) dmaphysbuf ;
 	while(transferred < count){
 		while(getNbAvailable(fifo_to_read) < transfer_size) schedule() ; 
-		if(edma_memtomemcpy(transfer_size, src_addr, trgt_addr, 0, INCR) < 0){
+		if(edma_memtomemcpy(transfer_size, src_addr, trgt_addr, 0, INCR, INCR) < 0){
 			printk("%s: LOGIBONE_fifo read: Failed to trigger EDMA transfer.\n",gDrvrName);
 			goto exit ;
 		}	
@@ -459,27 +467,27 @@ unsigned short int getSize(struct logibone_fifo * fifop){
 static long LOGIBONE_fifo_ioctl(struct file *filp, unsigned int cmd, unsigned long arg){
 	struct logibone_device * dev ;
 	struct logibone_fifo * fifo_to_ctl ;
-	printk("calling ioctl %d on logibone \n", cmd);
+	//printk("calling ioctl %d on logibone \n", cmd);
 	dev = filp->private_data ; /* for other methods */
 	if(dev->type == fifo){
 		fifo_to_ctl = &(((struct logibone_device *) filp->private_data)->data.fifo) ; 
 		switch(cmd){
 			case LOGIBONE_FIFO_RESET :
-				printk("performing reset on fifo ! \n");
+				//printk("performing reset on fifo ! \n");
 				fifo_to_ctl->virt_addr[FIFO_NB_AVAILABLE_A_OFFSET] = 0 ;
 				fifo_to_ctl->virt_addr[FIFO_NB_AVAILABLE_B_OFFSET] = 0 ;
 				return 0 ;
 			case LOGIBONE_FIFO_PEEK :
-				printk("performing peek on fifo ! \n");
+				//printk("performing peek on fifo ! \n");
 				return  fifo_to_ctl->virt_addr[FIFO_PEEK_OFFSET] ;
 			case LOGIBONE_FIFO_NB_FREE :
-				printk("performing getNbFRee() on fifo ! \n");
+				//printk("performing getNbFRee() on fifo ! \n");
 				return getNbFree(fifo_to_ctl) ;
 			case LOGIBONE_FIFO_NB_AVAILABLE :
-				printk("performing getNbAvailable() on fifo ! \n");
+				//printk("performing getNbAvailable() on fifo ! \n");
 				return getNbAvailable(fifo_to_ctl) ;
 			case LOGIBONE_FIFO_SIZE :
-				printk("calling fifo size ! \n");
+				//printk("calling fifo size ! \n");
 				return getSize(fifo_to_ctl) ;
 			default: /* redundant, as cmd was checked against MAXNR */
 				printk("unknown command %d \n", cmd);
@@ -500,11 +508,13 @@ static void LOGIBONE_fifo_exit(void)
 	dev_t devno = MKDEV(gDrvrMajor, 0);
 	/* Get rid of our char dev entries */
 	if (logibone_devices) {
-		for (i = 0; i < nb_fifo; i++) {
+		for (i = 0; i <= nb_fifo; i++) {
+			device_destroy(logibone_class, MKDEV(gDrvrMajor, i));
 			cdev_del(&logibone_devices[i].cdev);
 		}
 		kfree(logibone_devices);
 	}
+	class_destroy(logibone_class);
 	/* cleanup_module is never called if registering failed */
 	unregister_chrdev_region(devno, nb_fifo+1);
 }
@@ -561,7 +571,7 @@ static int LOGIBONE_fifo_init(void)
 	logibone_devices[0].cdev.owner = THIS_MODULE;
 	logibone_devices[0].cdev.ops = &LOGIBONE_fifo_ops;
 	cdev_add(&(logibone_devices[0].cdev), devno, 1);
-	printk(KERN_INFO "'mknod /dev/%s c %d %d'.\n", gDrvrName, gDrvrMajor, 0);
+	//printk(KERN_INFO "'mknod /dev/%s c %d %d'.\n", gDrvrName, gDrvrMajor, 0);
 	/* Initialize each device. */
         for (i = 1; i <=  nb_fifo ; i++) {
 		devno = MKDEV(gDrvrMajor, i);
@@ -588,7 +598,7 @@ static int LOGIBONE_fifo_init(void)
 
 
 
-int edma_memtomemcpy(int count, unsigned long src_addr, unsigned long trgt_addr,  int event_queue,  enum address_mode mode)
+int edma_memtomemcpy(int count, unsigned long src_addr, unsigned long trgt_addr,  int event_queue,  enum address_mode src_mode, enum address_mode trg_mode)
 {
 	int result = 0;
 	unsigned int dma_ch = 0;
@@ -602,17 +612,17 @@ int edma_memtomemcpy(int count, unsigned long src_addr, unsigned long trgt_addr,
 
 	dma_ch = result;
 	if(count % 16 == 0){
-		edma_set_src (dma_ch, src_addr, mode, W128BIT);
-		edma_set_dest (dma_ch, trgt_addr, mode, W128BIT);
+		edma_set_src (dma_ch, src_addr, src_mode, W128BIT);
+		edma_set_dest (dma_ch, trgt_addr, trg_mode, W128BIT);
 	}else if(count % 8 == 0){
-		edma_set_src (dma_ch, src_addr, mode, W64BIT);
-		edma_set_dest (dma_ch, trgt_addr, mode, W64BIT);
+		edma_set_src (dma_ch, src_addr, src_mode, W64BIT);
+		edma_set_dest (dma_ch, trgt_addr, trg_mode, W64BIT);
 	}else if(count % 4 == 0){
-		edma_set_src (dma_ch, src_addr, mode, W32BIT);
-		edma_set_dest (dma_ch, trgt_addr, mode, W32BIT);
+		edma_set_src (dma_ch, src_addr, src_mode, W32BIT);
+		edma_set_dest (dma_ch, trgt_addr, trg_mode, W32BIT);
 	}else{
-		edma_set_src (dma_ch, src_addr, mode, W16BIT);
-		edma_set_dest (dma_ch, trgt_addr, mode, W16BIT);
+		edma_set_src (dma_ch, src_addr, src_mode, W16BIT);
+		edma_set_dest (dma_ch, trgt_addr, trg_mode, W16BIT);
 	}
 	edma_set_src_index (dma_ch, 0, 0); // always copy from same location
 	edma_set_dest_index (dma_ch, count, count); // increase by transfer size on each copy
@@ -631,7 +641,7 @@ int edma_memtomemcpy(int count, unsigned long src_addr, unsigned long trgt_addr,
 		printk ("edma copy for logibone_fifo failed \n");
 		
 	}
-	while (irqraised1 == 0u) schedule();
+	while (irqraised1 == 0u) ;//schedule();
 	irqraised1 = 0u;
 	//irqraised1 = -1 ;
 
