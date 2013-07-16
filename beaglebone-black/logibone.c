@@ -138,6 +138,7 @@ struct logibone_device{
 	enum logibone_type type ;
 	union logibone_data data ;
 	struct cdev cdev;
+	unsigned char opened ;
 };
 
 
@@ -460,6 +461,11 @@ static int LOGIBONE_fifo_open(struct inode *inode, struct file *filp)
 		printk("Failed to retrieve logibone fifo structure !\n");
 		return -1 ;	
 	}
+	if(dev->opened == 1){
+		printk("%s: module already opened\n", gDrvrName);
+		return 0 ;
+	}
+
 	if(dev->type == main){
 		
 	}else{
@@ -488,6 +494,7 @@ static int LOGIBONE_fifo_open(struct inode *inode, struct file *filp)
 		up(&gpmc_lock);
 
 	}
+	dev->opened = 1 ;
 /*
 	request_mem_region(FPGA_BASE_ADDR, FIFO_BLOCK_SIZE, gDrvrName); //TODO: may block EDMA transfer ...
 	gpmc_cs1_virt = ioremap_nocache(FPGA_BASE_ADDR + FIFO_CMD_OFFSET, 16); //TODO: may block EDMA transfer ...
@@ -502,6 +509,10 @@ static int LOGIBONE_fifo_release(struct inode *inode, struct file *filp)
 {
 	struct logibone_device * dev ;
 	dev = container_of(inode->i_cdev, struct logibone_device, cdev);
+	if(dev->opened == 0){
+		printk("%s: module already released\n", gDrvrName);
+		return 0 ;
+	}
 	if(dev->type == fifo){
 		down(&gpmc_lock);
 		iounmap((dev->data.fifo).virt_addr);
@@ -519,6 +530,7 @@ static int LOGIBONE_fifo_release(struct inode *inode, struct file *filp)
 	iounmap(gpmc_cs1_virt);
 	release_mem_region(FPGA_BASE_ADDR, FIFO_BLOCK_SIZE );
 	printk("%s: Release: module released\n",gDrvrName);*/
+	dev->opened = 0 ;
 	return 0;
 }
 
@@ -668,9 +680,11 @@ static int LOGIBONE_fifo_init(void)
 	newMain = &(logibone_devices[0].data.main);
 	newMain->base_addr = (unsigned short *) (FPGA_BASE_ADDR); //todo need to check on that ...
 	main_device = device_create(logibone_class, NULL, devno, NULL, DEVICE_NAME);	// should create /dev entry for main node
+	logibone_devices[0].opened = 0 ;
 	if(main_device == NULL){
 		class_destroy(logibone_class);
    	 	result = -ENOMEM;
+		logibone_devices[0].opened = 0 ;
                 goto fail;
 	}
 	cdev_init(&(logibone_devices[0].cdev), &LOGIBONE_fifo_ops);
@@ -691,6 +705,7 @@ static int LOGIBONE_fifo_init(void)
         	(logibone_devices[i].cdev).owner = THIS_MODULE;
         	(logibone_devices[i].cdev).ops = &LOGIBONE_fifo_ops;
         	cdev_add(&(logibone_devices[i].cdev), devno, 1);
+		logibone_devices[i].opened = 0 ;
 		//printk(KERN_INFO "'mknod /dev/%s%d c %d %d'.\n", gDrvrName, i , gDrvrMajor, i);
 	}
 	sema_init(&gpmc_lock, 1); //semaphore for comm protection
