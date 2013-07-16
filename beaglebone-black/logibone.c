@@ -15,6 +15,7 @@
 #include <linux/edma.h>
 #include <linux/platform_data/edma.h>
 #include <linux/delay.h>
+#include <linux/mutex.h>
 
 //device tree support
 #include <linux/of.h>
@@ -46,19 +47,19 @@
 
 #define FPGA_BASE_ADDR	 0x01000000
 #define FIFO_BASE_ADDR	 0x00000000
-#define FIFO_CMD_OFFSET  512
+#define FIFO_CMD_OFFSET  1024
 #define FIFO_SIZE_OFFSET	(FIFO_CMD_OFFSET)
 #define FIFO_NB_AVAILABLE_A_OFFSET	(FIFO_CMD_OFFSET + 1)
 #define FIFO_NB_AVAILABLE_B_OFFSET	(FIFO_CMD_OFFSET + 2)
 #define FIFO_PEEK_OFFSET	(FIFO_CMD_OFFSET + 3)
 #define FIFO_READ_OFFSET	0
 #define FIFO_WRITE_OFFSET	0
-#define FIFO_BLOCK_SIZE	1024  //512 * 16 bits
+#define FIFO_BLOCK_SIZE	2048  //512 * 16 bits
 
 #define DEVICE_NAME "logibone"
 
 
-//#define USE_EDMA
+#define USE_EDMA
 #define EDMA_CHAN 20
 
 unsigned int nb_fifo = 1 ;
@@ -71,6 +72,8 @@ static char * gDrvrName = DEVICE_NAME;
 static unsigned char gDrvrMajor = 0 ;
 
 
+
+
 int dma_ch ;
 dma_addr_t dmaphysbuf = 0;
 dma_addr_t dmapGpmcbuf = FPGA_BASE_ADDR;
@@ -79,6 +82,7 @@ static volatile int irqraised1 = 0;
 unsigned char * readBuffer ;
 unsigned char * writeBuffer ;
 
+struct semaphore gpmc_lock;
 
 unsigned int fifo_size ;
 
@@ -320,6 +324,7 @@ ssize_t writeFifo(struct file *filp, const char *buf, size_t count,
 		ret = -1;
 		goto exit;
 	}
+	down(&gpmc_lock);
 	while(transferred < count){
 		while(getNbFree(fifo_to_write) < transfer_size) udelay(5) ; //schedule() ;
 		#ifdef USE_EDMA		
@@ -352,6 +357,8 @@ ssize_t writeFifo(struct file *filp, const char *buf, size_t count,
 #else
 	kfree(writeBuffer);
 #endif
+
+	up(&gpmc_lock);
 	return (ret);
 }
 
@@ -393,6 +400,7 @@ ssize_t readFifo(struct file *filp, char *buf, size_t count, loff_t *f_pos)
 	src_addr = (unsigned long) fifo_to_read->virt_addr;
 	trgt_addr = (unsigned long) readBuffer ;
 #endif
+	down(&gpmc_lock);
 	while(transferred < count){
 		//while(getNbAvailable(fifo_to_read) < transfer_size) udelay(5) ;//schedule() ; 
 		while(nb_available_tokens < transfer_size){
@@ -436,6 +444,7 @@ ssize_t readFifo(struct file *filp, char *buf, size_t count, loff_t *f_pos)
 #endif
 	ret = transferred ;
 	exit:
+	up(&gpmc_lock);
 	return ret;
 }
 
@@ -444,6 +453,7 @@ ssize_t readFifo(struct file *filp, char *buf, size_t count, loff_t *f_pos)
 static int LOGIBONE_fifo_open(struct inode *inode, struct file *filp)
 {
 	struct logibone_device * dev ;
+	struct logibone_fifo * fifo_dev ;
 	dev = container_of(inode->i_cdev, struct logibone_device, cdev);
 	filp->private_data = dev; /* for other methods */
 	if(dev == NULL){
@@ -453,8 +463,9 @@ static int LOGIBONE_fifo_open(struct inode *inode, struct file *filp)
 	if(dev->type == main){
 		
 	}else{
-		struct logibone_fifo * fifo_dev = &((dev->data).fifo) ;
-		printk("Opening fifo %d @%x \n", fifo_dev->id, (unsigned long) fifo_dev->base_addr);
+		down(&gpmc_lock);
+		fifo_dev = &((dev->data).fifo) ;
+		printk("Opening fifo %d @%lx \n", fifo_dev->id, (unsigned long) fifo_dev->base_addr);
 #ifdef USE_EDMA	
 		request_mem_region((unsigned long) fifo_dev->base_addr, FIFO_BLOCK_SIZE, gDrvrName); //TODO: may block EDMA transfer ...
 	
@@ -464,16 +475,17 @@ static int LOGIBONE_fifo_open(struct inode *inode, struct file *filp)
 		fifo_dev->virt_addr = ioremap_nocache(((unsigned long) fifo_dev->base_addr), FIFO_BLOCK_SIZE*2);
 #endif
 		fifo_dev->size = fifo_dev->virt_addr[FIFO_SIZE_OFFSET] ;
-		printk("%s: Open: module opened, with fifo size %d @%x\n",gDrvrName, fifo_dev->size, (unsigned long) fifo_dev->virt_addr);
+		printk("%s: Open: module opened, with fifo size %d @%lx\n",gDrvrName, fifo_dev->size, (unsigned long) fifo_dev->virt_addr);
 #ifdef USE_EDMA	
 		fifo_dev->dma_chan = edma_alloc_channel (EDMA_CHANNEL_ANY, dma_callback, NULL, EVENTQ_0);
 #endif
 		printk("EDMA channel %d reserved \n", fifo_dev->dma_chan);			
 		if (fifo_dev->dma_chan < 0) {
 			printk ("\nedma3_memtomemcpytest_dma::edma_alloc_channel failed for dma_ch, error:%d\n", fifo_dev->dma_chan);
+			up(&gpmc_lock);			
 			return -1;
 		}
-		
+		up(&gpmc_lock);
 
 	}
 /*
@@ -491,6 +503,7 @@ static int LOGIBONE_fifo_release(struct inode *inode, struct file *filp)
 	struct logibone_device * dev ;
 	dev = container_of(inode->i_cdev, struct logibone_device, cdev);
 	if(dev->type == fifo){
+		down(&gpmc_lock);
 		iounmap((dev->data.fifo).virt_addr);
 		
 #ifdef USE_EDMA		
@@ -499,7 +512,8 @@ static int LOGIBONE_fifo_release(struct inode *inode, struct file *filp)
 #else 
 		release_mem_region(((unsigned long) (dev->data.fifo).base_addr), FIFO_BLOCK_SIZE*2 );
 #endif
-		printk("%s: Release: module released\n",gDrvrName);	
+		printk("%s: Release: module released\n",gDrvrName);
+		up(&gpmc_lock);	
 	}
 	/*
 	iounmap(gpmc_cs1_virt);
@@ -597,6 +611,7 @@ static void LOGIBONE_fifo_exit(void)
 	int i;
 	dev_t devno = MKDEV(gDrvrMajor, 0);
 	/* Get rid of our char dev entries */
+	down(&gpmc_lock);
 	if (logibone_devices) {
 		for (i = 0; i <= nb_fifo; i++) {
 			device_destroy(logibone_class, MKDEV(gDrvrMajor, i));
@@ -607,6 +622,7 @@ static void LOGIBONE_fifo_exit(void)
 	class_destroy(logibone_class);
 	/* cleanup_module is never called if registering failed */
 	unregister_chrdev_region(devno, nb_fifo+1);
+	up(&gpmc_lock);
 }
 
 static int LOGIBONE_fifo_init(void)
@@ -677,6 +693,7 @@ static int LOGIBONE_fifo_init(void)
         	cdev_add(&(logibone_devices[i].cdev), devno, 1);
 		//printk(KERN_INFO "'mknod /dev/%s%d c %d %d'.\n", gDrvrName, i , gDrvrMajor, i);
 	}
+	sema_init(&gpmc_lock, 1); //semaphore for comm protection
         return 0;
 
   fail:
