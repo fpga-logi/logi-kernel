@@ -82,8 +82,6 @@ static volatile int irqraised1 = 0;
 unsigned char * readBuffer ;
 unsigned char * writeBuffer ;
 
-struct semaphore gpmc_lock;
-
 unsigned int fifo_size ;
 
 
@@ -325,7 +323,6 @@ ssize_t writeFifo(struct file *filp, const char *buf, size_t count,
 		ret = -1;
 		goto exit;
 	}
-	down(&gpmc_lock);
 	while(transferred < count){
 		while(getNbFree(fifo_to_write) < transfer_size) udelay(5) ; //schedule() ;
 		#ifdef USE_EDMA		
@@ -359,7 +356,6 @@ ssize_t writeFifo(struct file *filp, const char *buf, size_t count,
 	kfree(writeBuffer);
 #endif
 
-	up(&gpmc_lock);
 	return (ret);
 }
 
@@ -401,7 +397,6 @@ ssize_t readFifo(struct file *filp, char *buf, size_t count, loff_t *f_pos)
 	src_addr = (unsigned long) fifo_to_read->virt_addr;
 	trgt_addr = (unsigned long) readBuffer ;
 #endif
-	down(&gpmc_lock);
 	while(transferred < count){
 		//while(getNbAvailable(fifo_to_read) < transfer_size) udelay(5) ;//schedule() ; 
 		while(nb_available_tokens < transfer_size){
@@ -445,7 +440,6 @@ ssize_t readFifo(struct file *filp, char *buf, size_t count, loff_t *f_pos)
 #endif
 	ret = transferred ;
 	exit:
-	up(&gpmc_lock);
 	return ret;
 }
 
@@ -469,7 +463,6 @@ static int LOGIBONE_fifo_open(struct inode *inode, struct file *filp)
 	if(dev->type == main){
 		
 	}else{
-		down(&gpmc_lock);
 		fifo_dev = &((dev->data).fifo) ;
 		printk("Opening fifo %d @%lx \n", fifo_dev->id, (unsigned long) fifo_dev->base_addr);
 #ifdef USE_EDMA	
@@ -488,10 +481,9 @@ static int LOGIBONE_fifo_open(struct inode *inode, struct file *filp)
 		printk("EDMA channel %d reserved \n", fifo_dev->dma_chan);			
 		if (fifo_dev->dma_chan < 0) {
 			printk ("\nedma3_memtomemcpytest_dma::edma_alloc_channel failed for dma_ch, error:%d\n", fifo_dev->dma_chan);
-			up(&gpmc_lock);			
+		
 			return -1;
 		}
-		up(&gpmc_lock);
 
 	}
 	dev->opened = 1 ;
@@ -514,7 +506,6 @@ static int LOGIBONE_fifo_release(struct inode *inode, struct file *filp)
 		return 0 ;
 	}
 	if(dev->type == fifo){
-		down(&gpmc_lock);
 		iounmap((dev->data.fifo).virt_addr);
 		
 #ifdef USE_EDMA		
@@ -524,7 +515,6 @@ static int LOGIBONE_fifo_release(struct inode *inode, struct file *filp)
 		release_mem_region(((unsigned long) (dev->data.fifo).base_addr), FIFO_BLOCK_SIZE*2 );
 #endif
 		printk("%s: Release: module released\n",gDrvrName);
-		up(&gpmc_lock);	
 	}
 	/*
 	iounmap(gpmc_cs1_virt);
@@ -623,7 +613,6 @@ static void LOGIBONE_fifo_exit(void)
 	int i;
 	dev_t devno = MKDEV(gDrvrMajor, 0);
 	/* Get rid of our char dev entries */
-	down(&gpmc_lock);
 	if (logibone_devices) {
 		for (i = 0; i <= nb_fifo; i++) {
 			device_destroy(logibone_class, MKDEV(gDrvrMajor, i));
@@ -634,7 +623,6 @@ static void LOGIBONE_fifo_exit(void)
 	class_destroy(logibone_class);
 	/* cleanup_module is never called if registering failed */
 	unregister_chrdev_region(devno, nb_fifo+1);
-	up(&gpmc_lock);
 }
 
 static int LOGIBONE_fifo_init(void)
@@ -708,7 +696,6 @@ static int LOGIBONE_fifo_init(void)
 		logibone_devices[i].opened = 0 ;
 		//printk(KERN_INFO "'mknod /dev/%s%d c %d %d'.\n", gDrvrName, i , gDrvrMajor, i);
 	}
-	sema_init(&gpmc_lock, 1); //semaphore for comm protection
         return 0;
 
   fail:
