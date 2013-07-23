@@ -62,7 +62,7 @@
 #define USE_EDMA
 #define EDMA_CHAN 20
 
-
+#define I2_IO_EXP_ADDR	0x24
 #define I2C_IO_EXP_CONFIG_REG	0x03
 #define I2C_IO_EXP_IN_REG	0x00
 #define I2C_IO_EXP_OUT_REG	0x02
@@ -107,7 +107,7 @@ static long LOGIBONE_fifo_ioctl(struct file *filp, unsigned int cmd, unsigned lo
 
 
 static struct i2c_board_info io_exp_info= {
-	I2C_BOARD_INFO("fpga_ctrl", 0x24),
+	I2C_BOARD_INFO("fpga_ctrl", I2_IO_EXP_ADDR),
 };
 
 static struct file_operations LOGIBONE_fifo_ops = {
