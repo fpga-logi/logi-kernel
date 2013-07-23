@@ -27,9 +27,9 @@
 
 #define SSI_CLK 02
 #define SSI_DATA 03
-#define SSI_DONE 48
-#define SSI_PROG 30
-#define SSI_INIT 31
+#define SSI_DONE 3
+#define SSI_PROG 5
+#define SSI_INIT 2
 
 /* Use 'p' as magic number */
 #define LOGIBONE_FIFO_IOC_MAGIC 'p'
@@ -283,7 +283,8 @@ int loadBitFile(struct i2c_client * io_cli, const unsigned char * bitBuffer_user
 	i2c_buffer[0] = I2C_IO_EXP_CONFIG_REG;
 	i2c_buffer[1] = 0xFF;
 	i2c_master_send(io_cli, i2c_buffer, 2); // set all config pins as input
-	
+	gpio_direction_input(SSI_CLK);
+	gpio_direction_input(SSI_DATA);
 	gpio_free(SSI_CLK);
 	gpio_free(SSI_DATA);
 
