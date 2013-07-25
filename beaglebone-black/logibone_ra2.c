@@ -25,11 +25,13 @@
 #include <linux/of_i2c.h>
 
 
-#define SSI_CLK 02
-#define SSI_DATA 03
+#define SSI_CLK 110
+#define SSI_DATA 112
 #define SSI_DONE 3
 #define SSI_PROG 5
 #define SSI_INIT 2
+#define MODE0	0
+#define MODE1 1
 
 /* Use 'p' as magic number */
 #define LOGIBONE_FIFO_IOC_MAGIC 'p'
@@ -65,7 +67,7 @@
 #define I2_IO_EXP_ADDR	0x24
 #define I2C_IO_EXP_CONFIG_REG	0x03
 #define I2C_IO_EXP_IN_REG	0x00
-#define I2C_IO_EXP_OUT_REG	0x02
+#define I2C_IO_EXP_OUT_REG	0x01
 
 unsigned int nb_fifo = 1 ;
 
@@ -194,7 +196,13 @@ inline void serialConfigWriteByte(unsigned char val){
 inline void i2c_set_pin(struct i2c_client * io_cli, unsigned char pin, unsigned char val){
 	unsigned char i2c_buffer [2] ;
 	i2c_buffer[0] = I2C_IO_EXP_OUT_REG;
-	i2c_buffer[1] = (1 << pin);
+	i2c_master_send(io_cli, i2c_buffer, 1); 
+	i2c_master_recv(io_cli, &i2c_buffer[1], 1);
+	if(val == 1){
+		i2c_buffer[1] |= (1 << pin);	
+	}else{
+		i2c_buffer[1] &= ~(1 << pin);
+	}
 	i2c_master_send(io_cli, i2c_buffer, 2); 
 }
 
@@ -203,7 +211,8 @@ inline unsigned char i2c_get_pin(struct i2c_client * io_cli, unsigned char pin){
 	i2c_buffer = I2C_IO_EXP_IN_REG;
 	i2c_master_send(io_cli, &i2c_buffer, 1); 
 	i2c_master_recv(io_cli, &i2c_buffer, 1); 
-	return (i2c_buffer & (1 << pin)) ;
+	//printk("reading value %x \n", i2c_buffer);
+	return ((i2c_buffer >> pin) & 0x01) ;
 }
 
 int loadBitFile(struct i2c_client * io_cli, const unsigned char * bitBuffer_user, const unsigned int length){
@@ -230,8 +239,10 @@ int loadBitFile(struct i2c_client * io_cli, const unsigned char * bitBuffer_user
 	}
 	i2c_buffer[0] = I2C_IO_EXP_CONFIG_REG;
 	i2c_buffer[1] = 0xFF;
-	i2c_buffer[1] &= ~ (1 << SSI_PROG);
-	i2c_master_send(io_cli, i2c_buffer, 2); // set SSI_PROG as output others as inputs
+	i2c_buffer[1] &= ~ ((1 << SSI_PROG) | (1 << MODE1) | (1 << MODE0));
+	i2c_master_send(io_cli, i2c_buffer, 2); // set SSI_PROG, MODE0, MODE1 as output others as inputs
+	i2c_set_pin(io_cli, MODE0, 1);
+	i2c_set_pin(io_cli, MODE1, 1);
 	i2c_set_pin(io_cli, SSI_PROG, 0);
 
 	gpio_direction_output(SSI_CLK, 0);
@@ -247,16 +258,20 @@ int loadBitFile(struct i2c_client * io_cli, const unsigned char * bitBuffer_user
 	if(timer >= 200){
 		printk("FPGA did not answer to prog request, init pin not going low \n");
 		i2c_set_pin(io_cli, SSI_PROG, 1);
+		gpio_free(SSI_CLK);
+		gpio_free(SSI_DATA);
 		return -ENOTTY;	
 	}
 	timer = 0;
 	__delay_cycles(5*SSI_DELAY);
 	i2c_set_pin(io_cli, SSI_PROG, 1);
-	while(i2c_get_pin(io_cli, SSI_INIT) == 0 && timer < 0xFFFFFF){
+	while(i2c_get_pin(io_cli, SSI_INIT) == 0 && timer < 256){ // need to find a better way ...
 		 timer ++; // waiting for init pin to go up
 	}
-	if(timer >= 0xFFFFFF){
+	if(timer >= 256){
 		printk("FPGA did not answer to prog request, init pin not going high \n");
+		gpio_free(SSI_CLK);
+		gpio_free(SSI_DATA);
 		return -ENOTTY;	
 	}
 	timer = 0;
@@ -266,7 +281,7 @@ int loadBitFile(struct i2c_client * io_cli, const unsigned char * bitBuffer_user
 		schedule();
 	}
 	printk("Waiting for done pin to go high \n");
-	while(timer < 50 && gpio_get_value(SSI_DONE) == 0){
+	while(timer < 50){
 		gpio_set_value(SSI_CLK, 0);
 		__delay_cycles(SSI_DELAY);	
 		gpio_set_value(SSI_CLK, 1);
@@ -275,14 +290,16 @@ int loadBitFile(struct i2c_client * io_cli, const unsigned char * bitBuffer_user
 	}
 	gpio_set_value(SSI_CLK, 0);
 	gpio_set_value(SSI_DATA, 1);	
-	if(i2c_get_pin(io_cli, SSI_DONE) == 0 && timer >= 255){
+	if(i2c_get_pin(io_cli, SSI_DONE) == 0){
 		printk("FPGA prog failed, done pin not going high \n");
+		gpio_free(SSI_CLK);
+		gpio_free(SSI_DATA);
 		return -ENOTTY;		
 	}
 
 	i2c_buffer[0] = I2C_IO_EXP_CONFIG_REG;
-	i2c_buffer[1] = 0xFF;
-	i2c_master_send(io_cli, i2c_buffer, 2); // set all config pins as input
+	i2c_buffer[1] = 0xDC;
+	i2c_master_send(io_cli, i2c_buffer, 2); // set all unused config pins as input
 	gpio_direction_input(SSI_CLK);
 	gpio_direction_input(SSI_DATA);
 	gpio_free(SSI_CLK);
@@ -690,7 +707,11 @@ static int LOGIBONE_fifo_init(void)
 	/*
 	Do the i2c stuff
 	*/
-	i2c_adap = i2c_get_adapter(2); // todo need to check i2c adapter id
+	i2c_adap = i2c_get_adapter(1); // todo need to check i2c adapter id
+	if(i2c_adap == NULL){
+		printk("Cannot get adapter 1 \n");
+		goto fail ;
+	}
 	newMain->i2c_io = i2c_new_device(i2c_adap , &io_exp_info);
 	i2c_put_adapter(i2c_adap); //don't know what it does, seems to release the adapter ...
 	

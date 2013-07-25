@@ -88,8 +88,8 @@
 			fpga_config_pins: pinmux_fpga_config_pins {
 				pinctrl-single,pins = <
 					/* config clk and data */
-					0x198 0x33      /*  spi1_d1 MODE3 | INPUT | PULLUP , serial data config */
-					0x1AC 0x33	/* spi1_sclk MODE3 | INPUT | PULLUP, serial clock config  */
+					0x198 0x17      /*  spi1_d1 MODE3 | INPUT | PULLUP , serial data config */
+					0x190 0x17	/* spi1_sclk MODE3 | INPUT | PULLUP, serial clock config  */
 				>;
 			};
 		};
@@ -205,14 +205,14 @@
 				pinctrl-0 = <&fpga_config_pins>;
 				status="okay";
 			
-				gpio@4 {
+				gpio@1 {
 					label = "ssi_clk";
-					gpios = <&gpio1 2 0>;
+					gpios = <&gpio4 14 0>;
 				};
 
-				gpio@5 {
+				gpio@2 {
 					label = "ssi_data";
-					gpios = <&gpio1 3 0>;
+					gpios = <&gpio4 16 0>;
 				};
 
 			};
