@@ -175,22 +175,49 @@ inline void __delay_cycles(unsigned long cycles){
 	}
 }
 
+volatile unsigned * gpio_regs ;
+
+#define GPIO3_BASE 0x481AE000
+#define GPIO3_SETDATAOUT *(gpio_regs+1)
+#define GPIO3_CLEARDATAOUT *(gpio_regs)
+inline void ssiSetClk(){
+	//gpio_set_value(SSI_CLK, 1);
+	GPIO3_SETDATAOUT = (1 << 14) ;
+}
+
+inline void ssiClearClk(){
+	//gpio_set_value(SSI_CLK, 0);
+	GPIO3_CLEARDATAOUT = (1 << 14);
+}
+
+inline void ssiSetData(){
+	//gpio_set_value(SSI_DATA, 1);
+	GPIO3_SETDATAOUT= (1 << 16) ;
+}
+
+inline void ssiClearData(){
+	//gpio_set_value(SSI_DATA, 0);
+	GPIO3_CLEARDATAOUT = (1 << 16);
+}
+
 inline void serialConfigWriteByte(unsigned char val){
 	unsigned char bitCount = 0 ;
 	unsigned char valBuf = val ;
 	for(bitCount = 0 ; bitCount < 8 ; bitCount ++){
-		gpio_set_value(SSI_CLK, 0);
+		ssiClearClk();
 		if((valBuf & 0x80) != 0){
-			gpio_set_value(SSI_DATA, 1);
+			ssiSetData();
 		}else{
-			gpio_set_value(SSI_DATA, 0);
+			ssiClearData();
 		}
 		//__delay_cycles(SSI_DELAY);	
-		gpio_set_value(SSI_CLK, 1);
+		ssiSetClk();
 		valBuf = (valBuf << 1);
 		//__delay_cycles(SSI_DELAY);			
 	}
 }
+
+
 
 
 inline void i2c_set_pin(struct i2c_client * io_cli, unsigned char pin, unsigned char val){
@@ -221,6 +248,9 @@ int loadBitFile(struct i2c_client * io_cli, const unsigned char * bitBuffer_user
 	unsigned long int timer = 0;
 	unsigned char * bitBuffer ;	
 	unsigned char i2c_buffer [4] ;
+	//request_mem_region(GPIO3_BASE + 0x190, 8, gDrvrName);
+	gpio_regs = ioremap_nocache(GPIO3_BASE + 0x190, 2*sizeof(int));
+
 	bitBuffer = kmalloc(length, GFP_KERNEL);
 	if(bitBuffer == NULL || copy_from_user(bitBuffer, bitBuffer_user, length)){
 		printk("Failed allocate buffer for configuration file \n");
@@ -299,12 +329,13 @@ int loadBitFile(struct i2c_client * io_cli, const unsigned char * bitBuffer_user
 
 	i2c_buffer[0] = I2C_IO_EXP_CONFIG_REG;
 	i2c_buffer[1] = 0xDC;
-	i2c_master_send(io_cli, i2c_buffer, 2); // set all unused config pins as input
+	i2c_master_send(io_cli, i2c_buffer, 2); // set all unused config pins as input (keeping mode pins and PROG as output)
 	gpio_direction_input(SSI_CLK);
 	gpio_direction_input(SSI_DATA);
 	gpio_free(SSI_CLK);
 	gpio_free(SSI_DATA);
-
+	iounmap(gpio_regs);
+	//release_mem_region(GPIO3_BASE + 0x190, 8);
 	kfree(bitBuffer) ;
 	return length ;
 }
