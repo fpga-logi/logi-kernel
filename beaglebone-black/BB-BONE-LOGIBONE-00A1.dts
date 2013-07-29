@@ -87,14 +87,17 @@
 		
 			fpga_config_pins: pinmux_fpga_config_pins {
 				pinctrl-single,pins = <
+					/*MODE pins*/
+					0x0B4 0x17	/* lcd_data_6 MODE7 | OUTPUT, MODE0 */
+					0x0BC 0x17	/* lcd_data_6 MODE7 | OUTPUT, MODE1 */
 					/* config init */
 					0x0B8 0x17	/* lcd_data_6 MODE7 | OUTPUT, CFG_PROG_B */
 					0x0B0 0x37	/* lcd_data_4 MODE7 | INPUT, CFG_INIT_B */
 					0x0A8 0x37	/* lcd_data_2 MODE7 | INPUT,  CFG_DONE */
 
 					/* config clk and data */
-					0x158 0x17      /*  spi1_d1 MODE3 | INPUT | PULLUP , serial data config */
-					0x150 0x17	/* spi1_sclk MODE3 | INPUT | PULLUP, serial clock config  */
+					0x158 0x17      /*  spi1_d1 MODE7 | INPUT | PULLUP , serial data config */
+					0x150 0x17	/* spi1_sclk MODE7 | INPUT | PULLUP, serial clock config  */
 				>;
 			};
 		};
@@ -158,7 +161,7 @@
 				gpmc,oe-on-ns = <30>;
 				gpmc,oe-off-ns = <50>;
 
-				gpmc,page-burst-access-ns = <10>;	/* CONFIG 5 */
+			gpmc,page-burst-access-ns = <10>;	/* CONFIG 5 */
 				gpmc,access-ns = <50>;
 				gpmc,rd-cycle-ns = <60>;
 				gpmc,wr-cycle-ns = <60>;
@@ -218,6 +221,16 @@
 				gpio@5 {
 					label = "ssi_data";
 					gpios = <&gpio1 4 0>;
+				};
+
+				gpio@6 {
+					label = "ssi_mode0";
+					gpios = <&gpio3 11 1>;
+				};
+
+				gpio@7 {
+					label = "ssi_mode1";
+					gpios = <&gpio2 13 1>;
 				};
 
 			};
