@@ -16,7 +16,7 @@
 #include <linux/platform_data/edma.h>
 #include <linux/delay.h>
 #include <linux/mutex.h>
-#include <linux/i2c.h>
+
 //device tree support
 #include <linux/of.h>
 #include <linux/of_platform.h>
@@ -25,13 +25,11 @@
 #include <linux/of_i2c.h>
 
 
-#define SSI_CLK 110
-#define SSI_DATA 112
-#define SSI_DONE 3
-#define SSI_PROG 5
-#define SSI_INIT 2
-#define MODE0	0
-#define MODE1 1
+#define SSI_CLK 02
+#define SSI_DATA 04
+#define SSI_DONE 72
+#define SSI_PROG 76
+#define SSI_INIT 74
 
 /* Use 'p' as magic number */
 #define LOGIBONE_FIFO_IOC_MAGIC 'p'
@@ -63,11 +61,6 @@
 
 #define USE_EDMA
 #define EDMA_CHAN 20
-
-#define I2_IO_EXP_ADDR	0x24
-#define I2C_IO_EXP_CONFIG_REG	0x03
-#define I2C_IO_EXP_IN_REG	0x00
-#define I2C_IO_EXP_OUT_REG	0x01
 
 unsigned int nb_fifo = 1 ;
 
@@ -107,11 +100,6 @@ static ssize_t LOGIBONE_fifo_read(struct file *filp, char *buf, size_t count, lo
 static long LOGIBONE_fifo_ioctl(struct file *filp, unsigned int cmd, unsigned long arg);
 
 
-
-static struct i2c_board_info io_exp_info= {
-	I2C_BOARD_INFO("fpga_ctrl", I2_IO_EXP_ADDR),
-};
-
 static struct file_operations LOGIBONE_fifo_ops = {
     .read =   LOGIBONE_fifo_read,
     .write =  LOGIBONE_fifo_write,
@@ -128,8 +116,7 @@ enum logibone_type{
 
 struct logibone_main{
 	unsigned short * base_addr ;
-	unsigned short * virt_addr ;
-	struct i2c_client * i2c_io;
+	unsigned short * virt_addr ;	
 };
 
 struct logibone_fifo{
@@ -158,98 +145,44 @@ struct class * logibone_class ;
 struct logibone_device * logibone_devices ;
 
 
-int loadBitFile(struct i2c_client * io_cli, const unsigned char * bitBuffer_user, unsigned int length);
+int loadBitFile(const unsigned char * bitBuffer_user, unsigned int length);
 unsigned short int getNbFree(struct logibone_fifo * fifop);
 unsigned short int getNbAvailable(struct logibone_fifo * fifop);
 unsigned short int getSize(struct logibone_fifo * fifop);
 
 
 
-
 #define SSI_DELAY 1
-
-
 inline void __delay_cycles(unsigned long cycles){
 	while(cycles != 0){
 		cycles -- ;	
 	}
 }
 
-volatile unsigned * gpio_regs ;
-
-#define GPIO3_BASE 0x481AE000
-#define GPIO3_SETDATAOUT *(gpio_regs+1)
-#define GPIO3_CLEARDATAOUT *(gpio_regs)
-inline void ssiSetClk(){
-	//gpio_set_value(SSI_CLK, 1);
-	GPIO3_SETDATAOUT = (1 << 14) ;
-}
-
-inline void ssiClearClk(){
-	//gpio_set_value(SSI_CLK, 0);
-	GPIO3_CLEARDATAOUT = (1 << 14);
-}
-
-inline void ssiSetData(){
-	//gpio_set_value(SSI_DATA, 1);
-	GPIO3_SETDATAOUT= (1 << 16) ;
-}
-
-inline void ssiClearData(){
-	//gpio_set_value(SSI_DATA, 0);
-	GPIO3_CLEARDATAOUT = (1 << 16);
-}
 
 inline void serialConfigWriteByte(unsigned char val){
 	unsigned char bitCount = 0 ;
 	unsigned char valBuf = val ;
 	for(bitCount = 0 ; bitCount < 8 ; bitCount ++){
-		ssiClearClk();
+		gpio_set_value(SSI_CLK, 0);
 		if((valBuf & 0x80) != 0){
-			ssiSetData();
+			gpio_set_value(SSI_DATA, 1);
 		}else{
-			ssiClearData();
+			gpio_set_value(SSI_DATA, 0);
 		}
 		//__delay_cycles(SSI_DELAY);	
-		ssiSetClk();
+		gpio_set_value(SSI_CLK, 1);
 		valBuf = (valBuf << 1);
 		//__delay_cycles(SSI_DELAY);			
 	}
 }
 
 
-
-
-inline void i2c_set_pin(struct i2c_client * io_cli, unsigned char pin, unsigned char val){
-	unsigned char i2c_buffer [2] ;
-	i2c_buffer[0] = I2C_IO_EXP_OUT_REG;
-	i2c_master_send(io_cli, i2c_buffer, 1); 
-	i2c_master_recv(io_cli, &i2c_buffer[1], 1);
-	if(val == 1){
-		i2c_buffer[1] |= (1 << pin);	
-	}else{
-		i2c_buffer[1] &= ~(1 << pin);
-	}
-	i2c_master_send(io_cli, i2c_buffer, 2); 
-}
-
-inline unsigned char i2c_get_pin(struct i2c_client * io_cli, unsigned char pin){
-	unsigned char i2c_buffer ;
-	i2c_buffer = I2C_IO_EXP_IN_REG;
-	i2c_master_send(io_cli, &i2c_buffer, 1); 
-	i2c_master_recv(io_cli, &i2c_buffer, 1); 
-	//printk("reading value %x \n", i2c_buffer);
-	return ((i2c_buffer >> pin) & 0x01) ;
-}
-
-int loadBitFile(struct i2c_client * io_cli, const unsigned char * bitBuffer_user, const unsigned int length){
+int loadBitFile(const unsigned char * bitBuffer_user, const unsigned int length){
 	unsigned char cfg = 1 ;	
 	unsigned long int i ;
 	unsigned long int timer = 0;
 	unsigned char * bitBuffer ;	
-	unsigned char i2c_buffer [4] ;
-	//request_mem_region(GPIO3_BASE + 0x190, 8, gDrvrName);
-	gpio_regs = ioremap_nocache(GPIO3_BASE + 0x190, 2*sizeof(int));
 
 	bitBuffer = kmalloc(length, GFP_KERNEL);
 	if(bitBuffer == NULL || copy_from_user(bitBuffer, bitBuffer_user, length)){
@@ -267,41 +200,49 @@ int loadBitFile(struct i2c_client * io_cli, const unsigned char * bitBuffer_user
 		printk("Failed to take control over ssi_data pin \n");
 		return -ENOTTY;
 	}
-	i2c_buffer[0] = I2C_IO_EXP_CONFIG_REG;
-	i2c_buffer[1] = 0xFF;
-	i2c_buffer[1] &= ~ ((1 << SSI_PROG) | (1 << MODE1) | (1 << MODE0));
-	i2c_master_send(io_cli, i2c_buffer, 2); // set SSI_PROG, MODE0, MODE1 as output others as inputs
-	i2c_set_pin(io_cli, MODE0, 1);
-	i2c_set_pin(io_cli, MODE1, 1);
-	i2c_set_pin(io_cli, SSI_PROG, 0);
+	cfg = gpio_request(SSI_PROG, "ssi_prog");
+	if(cfg < 0){
+		printk("Failed to take control over ssi_prog pin \n");
+		return -ENOTTY;
+	}
+	cfg = gpio_request(SSI_INIT, "ssi_init");
+	if(cfg < 0){
+		printk("Failed to take control over ssi_init pin \n");
+		return -ENOTTY;
+	}
+	cfg = gpio_request(SSI_DONE, "ssi_done");
+	if(cfg < 0){
+		printk("Failed to take control over ssi_done pin \n");
+		return -ENOTTY;
+	}
+	
 
 	gpio_direction_output(SSI_CLK, 0);
 	gpio_direction_output(SSI_DATA, 0);
+	gpio_direction_output(SSI_PROG, 0);
 
+	gpio_direction_input(SSI_INIT);
+	gpio_direction_input(SSI_DONE);
 	
 	gpio_set_value(SSI_CLK, 0);
-	i2c_set_pin(io_cli, SSI_PROG, 1);
+	gpio_set_value(SSI_PROG, 1);
 	__delay_cycles(10*SSI_DELAY);	
-	i2c_set_pin(io_cli, SSI_PROG, 0);
+	gpio_set_value(SSI_PROG, 0);
 	__delay_cycles(5*SSI_DELAY);		
-	while(i2c_get_pin(io_cli, SSI_INIT) > 0 && timer < 200) timer ++; // waiting for init pin to go down
+	while(gpio_get_value(SSI_INIT) > 0 && timer < 200) timer ++; // waiting for init pin to go down
 	if(timer >= 200){
 		printk("FPGA did not answer to prog request, init pin not going low \n");
-		i2c_set_pin(io_cli, SSI_PROG, 1);
-		gpio_free(SSI_CLK);
-		gpio_free(SSI_DATA);
+		gpio_set_value(SSI_PROG, 1);
 		return -ENOTTY;	
 	}
 	timer = 0;
 	__delay_cycles(5*SSI_DELAY);
-	i2c_set_pin(io_cli, SSI_PROG, 1);
-	while(i2c_get_pin(io_cli, SSI_INIT) == 0 && timer < 256){ // need to find a better way ...
+	gpio_set_value(SSI_PROG, 1);
+	while(gpio_get_value(SSI_INIT) == 0 && timer < 0xFFFFFF){
 		 timer ++; // waiting for init pin to go up
 	}
-	if(timer >= 256){
+	if(timer >= 0xFFFFFF){
 		printk("FPGA did not answer to prog request, init pin not going high \n");
-		gpio_free(SSI_CLK);
-		gpio_free(SSI_DATA);
 		return -ENOTTY;	
 	}
 	timer = 0;
@@ -311,31 +252,26 @@ int loadBitFile(struct i2c_client * io_cli, const unsigned char * bitBuffer_user
 		schedule();
 	}
 	printk("Waiting for done pin to go high \n");
-	while(timer < 50){
-		ssiClearClk();
+	while(timer < 50 && gpio_get_value(SSI_DONE) == 0){
+		gpio_set_value(SSI_CLK, 0);
 		__delay_cycles(SSI_DELAY);	
-		ssiSetClk();
+		gpio_set_value(SSI_CLK, 1);
 		__delay_cycles(SSI_DELAY);	
 		timer ++ ;
 	}
 	gpio_set_value(SSI_CLK, 0);
 	gpio_set_value(SSI_DATA, 1);	
-	if(i2c_get_pin(io_cli, SSI_DONE) == 0){
+	if(gpio_get_value(SSI_DONE) == 0 && timer >= 255){
 		printk("FPGA prog failed, done pin not going high \n");
-		gpio_free(SSI_CLK);
-		gpio_free(SSI_DATA);
 		return -ENOTTY;		
 	}
 
-	i2c_buffer[0] = I2C_IO_EXP_CONFIG_REG;
-	i2c_buffer[1] = 0xDC;
-	i2c_master_send(io_cli, i2c_buffer, 2); // set all unused config pins as input (keeping mode pins and PROG as output)
-	gpio_direction_input(SSI_CLK);
-	gpio_direction_input(SSI_DATA);
 	gpio_free(SSI_CLK);
 	gpio_free(SSI_DATA);
-	iounmap(gpio_regs);
-	//release_mem_region(GPIO3_BASE + 0x190, 8);
+	gpio_free(SSI_PROG);
+	gpio_free(SSI_INIT);
+	gpio_free(SSI_DONE);
+
 	kfree(bitBuffer) ;
 	return length ;
 }
@@ -595,12 +531,11 @@ static ssize_t LOGIBONE_fifo_write(struct file *filp, const char *buf, size_t co
 	dev = filp->private_data ; /* for other methods */
 	switch(dev->type){
 		case main :
-			
-			return loadBitFile((dev->data.main.i2c_io), buf, count);
+			return loadBitFile(buf, count);
 		case fifo:
 			return writeFifo(filp, buf, count, f_pos);
 		default:
-			return loadBitFile((dev->data.main.i2c_io), buf, count);	
+			return loadBitFile(buf, count);	
 	};
 	
 }
@@ -679,9 +614,6 @@ static void LOGIBONE_fifo_exit(void)
 	/* Get rid of our char dev entries */
 	if (logibone_devices) {
 		for (i = 0; i <= nb_fifo; i++) {
-			if(i == 0){
-				i2c_unregister_device(logibone_devices[i].data.main.i2c_io);			
-			}
 			device_destroy(logibone_class, MKDEV(gDrvrMajor, i));
 			cdev_del(&logibone_devices[i].cdev);
 		}
@@ -711,7 +643,6 @@ static int LOGIBONE_fifo_init(void)
 	int devno ;
 	struct logibone_fifo * newFifo ;
 	struct logibone_main * newMain ;
-	struct i2c_adapter *i2c_adap;
         dev_t dev = 0;
 	result = alloc_chrdev_region(&dev, 0, nb_fifo,
                                 gDrvrName);
@@ -737,20 +668,6 @@ static int LOGIBONE_fifo_init(void)
 	newMain->base_addr = (unsigned short *) (FPGA_BASE_ADDR); //todo need to check on that ...
 	main_device = device_create(logibone_class, NULL, devno, NULL, DEVICE_NAME);	// should create /dev entry for main node
 	logibone_devices[0].opened = 0 ;
-	
-	/*
-	Do the i2c stuff
-	*/
-	i2c_adap = i2c_get_adapter(1); // todo need to check i2c adapter id
-	if(i2c_adap == NULL){
-		printk("Cannot get adapter 1 \n");
-		goto fail ;
-	}
-	newMain->i2c_io = i2c_new_device(i2c_adap , &io_exp_info);
-	i2c_put_adapter(i2c_adap); //don't know what it does, seems to release the adapter ...
-	
-
-
 	if(main_device == NULL){
 		class_destroy(logibone_class);
    	 	result = -ENOMEM;

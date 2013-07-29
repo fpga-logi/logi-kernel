@@ -88,13 +88,13 @@
 			fpga_config_pins: pinmux_fpga_config_pins {
 				pinctrl-single,pins = <
 					/* config init */
-					0x070 0x17	/* lcd_data_4 MODE7 | OUTPUT, CFG_PROG_B */
-					0x074 0x37	/* lcd_data_2 MODE7 | INPUT, CFG_INIT_B */
-					0x040 0x37	/* lcd_data_0 MODE7 | INPUT,  CFG_DONE */
+					0x0B8 0x17	/* lcd_data_6 MODE7 | OUTPUT, CFG_PROG_B */
+					0x0B0 0x37	/* lcd_data_4 MODE7 | INPUT, CFG_INIT_B */
+					0x0A8 0x37	/* lcd_data_2 MODE7 | INPUT,  CFG_DONE */
 
 					/* config clk and data */
-					0x150 0x17      /*  uart2_txd MODE7 | OUTPUT | PULLUP , serial data config */
-					0x154 0x17	/* uart2_rxd MODE7 | OUTPUT | PULLUP, serial clock config  */
+					0x158 0x17      /*  spi1_d1 MODE3 | INPUT | PULLUP , serial data config */
+					0x150 0x17	/* spi1_sclk MODE3 | INPUT | PULLUP, serial clock config  */
 				>;
 			};
 		};
@@ -197,17 +197,17 @@
 			
 				gpio@1 {
 					label = "ssi_done";
-					gpios = <&gpio2 16 0>;
+					gpios = <&gpio3 8 0>;
 				};
 				
 				gpio@2 {
 					label = "ssi_prog";
-					gpios = <&gpio1 30 0>;
+					gpios = <&gpio3 12 0>;
 				};
 				
 				gpio@3 {
 					label = "ssi_init";
-					gpios = <&gpio1 31 0>;
+					gpios = <&gpio3 10 0>;
 				};
 	
 				gpio@4 {
@@ -217,7 +217,7 @@
 
 				gpio@5 {
 					label = "ssi_data";
-					gpios = <&gpio1 3 0>;
+					gpios = <&gpio1 4 0>;
 				};
 
 			};
