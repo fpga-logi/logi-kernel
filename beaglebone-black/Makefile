@@ -3,6 +3,8 @@
 ifneq ($(KERNELRELEASE),)
 	obj-m := logibone_ra1.o
 	obj-m += logibone_ra2.o
+	obj-m += logibone_ra2_dm.o
+	obj-m += logibone_ra1_dm.o
 # Otherwise we were called directly from the command
 # line; invoke the kernel build system.
 else
