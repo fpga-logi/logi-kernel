@@ -59,7 +59,7 @@
 #define DEVICE_NAME "logibone"
 
 
-#define USE_EDMA
+//#define USE_EDMA
 #define EDMA_CHAN 20
 
 unsigned int nb_fifo = 1 ;

@@ -58,6 +58,12 @@
 #define FIFO_WRITE_OFFSET	0
 #define FIFO_BLOCK_SIZE	2048  //512 * 16 bits
 
+
+#define INTERRUPT_MANAGER_BASE_ADDR	0x0000
+#define INTERRUPT_MANAGER_INT1_OFFSET	0x0000
+#define INTERRUPT_MANAGER_INT2_OFFSET	0x0000
+#define INTERRUPT_MANAGER_INT3_OFFSET	0x0000
+
 #define DEVICE_NAME "logibone"
 
 
@@ -540,13 +546,13 @@ static int LOGIBONE_fifo_open(struct inode *inode, struct file *filp)
 		printk("%s: Open: module opened, with fifo size %d @%lx\n",gDrvrName, fifo_dev->size, (unsigned long) fifo_dev->virt_addr);
 #ifdef USE_EDMA	
 		fifo_dev->dma_chan = edma_alloc_channel (EDMA_CHANNEL_ANY, dma_callback, NULL, EVENTQ_0);
-#endif
 		printk("EDMA channel %d reserved \n", fifo_dev->dma_chan);			
 		if (fifo_dev->dma_chan < 0) {
 			printk ("\nedma3_memtomemcpytest_dma::edma_alloc_channel failed for dma_ch, error:%d\n", fifo_dev->dma_chan);
 		
 			return -1;
 		}
+#endif
 
 	}
 	dev->opened = 1 ;
@@ -904,6 +910,25 @@ static void dma_callback(unsigned lch, u16 ch_status, void *data)
 }
 
 
+
+irqreturn_t gpio_interrupt_1(int irq, void *dev_id, struct pt_regs *regs)
+{
+  printk(KERN_ALERT "Interrupt_from_fpga\n");
+  /*if(gpmc_cs1_virt[INTERRUPT_MANAGER_BASE_ADDR + INTERRUPT_MANAGER_INT1_OFFSET] & 0x02){
+	 printk(KERN_ALERT "Interrupt 1 from fpga \n");
+  }
+  if(gpmc_cs1_virt[INTERRUPT_MANAGER_BASE_ADDR + INTERRUPT_MANAGER_INT2_OFFSET] & 0x02){
+	 printk(KERN_ALERT "Interrupt 2 from fpga \n");
+  }
+  if(gpmc_cs1_virt[INTERRUPT_MANAGER_BASE_ADDR + INTERRUPT_MANAGER_INT3_OFFSET] & 0x02){
+	 printk(KERN_ALERT "Interrupt 3 from fpga \n");
+  }*/
+  //can be used to signal fifo level ...
+  // this means that we need to trigger a DMA chain to empty the fifo
+  // also need to handle special case where FPGA may generate multiple edge when reading from the fifo ...
+  // We may also setup other interrupts (up to three) to handle vertical sync signal and data ready interrupts
+  return IRQ_HANDLED;
+}
 
 
 
