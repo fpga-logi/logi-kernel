@@ -216,31 +216,24 @@ int loadBitFile(struct i2c_client * io_cli, const unsigned char * bitBuffer_user
 	//__delay_cycles(10*SSI_DELAY);	
 	i2c_set_pin(io_cli, SSI_PROG, 0);
 	__delay_cycles(5*SSI_DELAY);
-	while(/*(i2c_test = i2c_get_pin(io_cli, SSI_INIT)) != 0xe1 &&*/ timer < 100){
-		i2c_test = i2c_get_pin(io_cli, SSI_INIT) ;
-		printk("Receiving %x from LPC \n", i2c_test);		 
-		timer ++; // waiting for init pin to go down
+	
+	//wait for FPGA to successfully enter configuration mode
+	do {
+		i2c_test = i2c_get_pin_ex(io_cli, SSI_INIT);
 	}
-	/*if(timer >= 200){
-		printk("FPGA did not answer to prog request, init pin not going low \n");
-		i2c_set_pin(io_cli, SSI_PROG, 1);
-		gpio_free(SSI_CLK);
-		gpio_free(SSI_DATA);
-		return -ENOTTY;	
-	}*/
-	/*	
-	timer = 0;
-	__delay_cycles(5*SSI_DELAY);
-	i2c_set_pin(io_cli, SSI_PROG, 1);
-	while(i2c_get_pin(io_cli, SSI_INIT) == 0 && timer < 256){ // need to find a better way ...
-		 timer ++; // waiting for init pin to go up
-	}
-	if(timer >= 256){
+	while(i2c_test!= 0x01 && timer++ < 100);
+
+	if(timer>=100){
 		printk("FPGA did not answer to prog request, init pin not going high \n");
 		gpio_free(SSI_CLK);
 		gpio_free(SSI_DATA);
-		return -ENOTTY;	
-	}*/
+
+		return -ENOTTY;
+	}
+
+	//debug only
+	printk("loop finished with %x from LPC; iter=%i\n", i2c_test, timer);
+
 	timer = 0;
 	printk("Starting configuration of %d bits \n", length*8);
 	for(i = 0 ; i < length ; i ++){
