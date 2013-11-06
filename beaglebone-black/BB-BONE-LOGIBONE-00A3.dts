@@ -191,22 +191,32 @@
 	};
 
 	fragment@2 {
-		target = <&ocp>;
-
-		__overlay__ {
-
-			status = "okay";
-			pinctrl-names = "default";
-			pinctrl-0 = <&fpga_config_pins>;
-
-			ssi_config{
-				pin-names = "ssi:clk","ssi:data";
-				gpios = <&gpio4 14 0
-					&gpio4 16 0>;
-			};
-
-		};
-	};
+        target = <&spi0>;
+        __overlay__ {
+            #address-cells     = <1>;
+            #size-cells     = <0>;
+            status            = "okay";
+            pinctrl-names    = "default";
+            pinctrl-0        = <&fpga_config_pins>;
+ 
+            spi0_0{
+                #address-cells       = <1>;
+                #size-cells       = <0>;
+                compatible           = "spidev";
+                reg               = <0>;
+                spi-max-frequency = <16000000>;
+                spi-cpha;
+            };
+            spi0_1{
+                #address-cells       = <1>;
+                #size-cells       = <0>;
+                compatible           = "spidev";
+                reg               = <1>;
+                spi-max-frequency = <16000000>;
+                // Mode 0 (CPOL = 0, CPHA = 0)
+            };
+        };
+    };
 
  };
 
