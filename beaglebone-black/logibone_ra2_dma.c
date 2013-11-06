@@ -66,6 +66,7 @@ static ssize_t LOGIBONE_dm_write(struct file *filp, const char *buf, size_t coun
 static ssize_t LOGIBONE_dm_read(struct file *filp, char *buf, size_t count, loff_t *f_pos);
 static long LOGIBONE_dm_ioctl(struct file *filp, unsigned int cmd, unsigned long arg);
 int edma_memtomemcpy(int count, unsigned long src_addr, unsigned long trgt_addr, int dma_ch);
+int edma_memtomemcpy_with_burst(int count, unsigned long src_addr, unsigned long trgt_addr, int dma_ch);
 static void dma_callback(unsigned lch, u16 ch_status, void *data);
 
 
@@ -384,7 +385,10 @@ ssize_t readMem(struct file *filp, char *buf, size_t count, loff_t *f_pos)
 	src_addr = (unsigned long) &(mem_to_read->base_addr[(*f_pos)/2]);
 	trgt_addr = (unsigned long) dmaphysbuf ;
 	while(transferred < count){
-		if(edma_memtomemcpy(transfer_size, src_addr, trgt_addr,  mem_to_read->dma_chan) < 0){
+		if(transfer_size > 32){ // handling 32 bytes alignment
+			transfer_size = (transfer_size & 0xFFFFFFE0) ; // masking to get 32 byte factor		
+		}
+		if(edma_memtomemcpy_with_burst(transfer_size, src_addr, trgt_addr,  mem_to_read->dma_chan) < 0){
 		
 			printk("%s: LOGIBONE_fifo read: Failed to trigger EDMA transfer.\n",gDrvrName);
 			goto exit ;
@@ -606,10 +610,12 @@ int edma_memtomemcpy(int count, unsigned long src_addr, unsigned long trgt_addr,
 	int result = 0;
 	struct edmacc_param param_set;
 
-	edma_set_src (dma_ch, src_addr, INCR, W256BIT);
-	edma_set_dest (dma_ch, trgt_addr, INCR, W256BIT);
+	edma_set_src (dma_ch, src_addr, INCR, W16BIT);
+	edma_set_dest (dma_ch, trgt_addr, INCR, W16BIT);
 	edma_set_src_index (dma_ch, 1, 1); 
+	//edma_set_src_index (dma_ch, 32, 1);
 	edma_set_dest_index (dma_ch, 1, 1); 
+	//edma_set_dest_index (dma_ch, 32, 1);
 	/* A Sync Transfer Mode */
 	edma_set_transfer_params (dma_ch, count, 1, 1, 1, ASYNC); //one block of one frame of one array of count bytes
 
@@ -636,6 +642,49 @@ int edma_memtomemcpy(int count, unsigned long src_addr, unsigned long trgt_addr,
 	edma_stop(dma_ch);
 	return result;
 }
+
+
+int edma_memtomemcpy_with_burst(int count, unsigned long src_addr, unsigned long trgt_addr, int dma_ch)
+{
+	int result = 0;
+	unsigned int a_count, b_count ;
+	struct edmacc_param param_set;
+
+	a_count = (count > 32 ) ? 32 : count ;
+	b_count = (count > 32 ) ? count/32 : 1 ;
+	edma_set_src (dma_ch, src_addr, INCR, W16BIT);
+	edma_set_dest (dma_ch, trgt_addr, INCR, W16BIT);
+	//edma_set_src_index (dma_ch, 1, 1); 
+	edma_set_src_index (dma_ch, a_count, 1);
+	//edma_set_dest_index (dma_ch, 1, 1); 
+	edma_set_dest_index (dma_ch, a_count, 1);
+	/* A Sync Transfer Mode */
+	edma_set_transfer_params (dma_ch, a_count, b_count, 1, 1, ASYNC); //one block of one frame of one array of count bytes
+
+	/* Enable the Interrupts on Channel 1 */
+	edma_read_slot (dma_ch, &param_set);
+	param_set.opt |= ITCINTEN;
+	param_set.opt |= TCINTEN;
+	param_set.opt |= EDMA_TCC(EDMA_CHAN_SLOT(dma_ch));
+	edma_write_slot (dma_ch, &param_set);
+	irqraised1 = 0u;
+	result = edma_start(dma_ch);
+	if (result != 0) {
+		printk ("edma copy for logibone_fifo failed \n");
+		
+	}
+	while (irqraised1 == 0u) udelay(5);//schedule();
+	//irqraised1 = 0u;
+	//irqraised1 = -1 ;
+
+	/* Check the status of the completed transfer */
+	if (irqraised1 < 0) {
+		printk ("edma copy for logibone_fifo: Event Miss Occured!!!\n");
+	}
+	edma_stop(dma_ch);
+	return result;
+}
+
 
 static void dma_callback(unsigned lch, u16 ch_status, void *data)
 {	
