@@ -172,9 +172,18 @@ inline unsigned char i2c_get_pin(struct i2c_client * io_cli, unsigned char pin){
 	unsigned char i2c_buffer [2] ;
 	i2c_buffer[0] = pin;
 	//i2c_master_send(io_cli, &i2c_buffer, 1); 
-	i2c_master_recv(io_cli, &i2c_buffer, 2); 
+	i2c_master_recv(io_cli, i2c_buffer, 2); 
 	//printk("reading value %x \n", i2c_buffer);
 	return i2c_buffer[0] ;
+}
+
+inline unsigned char i2c_get_pin_ex(struct i2c_client * io_cli, unsigned char pin){
+	unsigned char i2c_buffer [2] ;
+
+	i2c_master_send(io_cli, &pin, 1); 
+	i2c_master_recv(io_cli, i2c_buffer, 2); 
+
+	return i2c_buffer[1] ;
 }
 
 int loadBitFile(struct i2c_client * io_cli, const unsigned char * bitBuffer_user, const unsigned int length){
@@ -216,7 +225,7 @@ int loadBitFile(struct i2c_client * io_cli, const unsigned char * bitBuffer_user
 	//__delay_cycles(10*SSI_DELAY);	
 	i2c_set_pin(io_cli, SSI_PROG, 0);
 	__delay_cycles(5*SSI_DELAY);
-	
+
 	//wait for FPGA to successfully enter configuration mode
 	do {
 		i2c_test = i2c_get_pin_ex(io_cli, SSI_INIT);
@@ -232,7 +241,7 @@ int loadBitFile(struct i2c_client * io_cli, const unsigned char * bitBuffer_user
 	}
 
 	//debug only
-	printk("loop finished with %x from LPC; iter=%i\n", i2c_test, timer);
+	printk("loop finished with 0x%x from LPC; iter=%lu\n", i2c_test, timer);
 
 	timer = 0;
 	printk("Starting configuration of %d bits \n", length*8);
@@ -277,7 +286,6 @@ int loadBitFile(struct i2c_client * io_cli, const unsigned char * bitBuffer_user
 ssize_t writeMem(struct file *filp, const char *buf, size_t count,
                        loff_t *f_pos)
 {
-	unsigned int ret = 0;
 	unsigned short sBuf ;
 	struct mark1_mem * mem_to_write = &(((struct mark1_device *) filp->private_data)->data.mem) ;
 	if(count == 2){
@@ -294,7 +302,6 @@ ssize_t writeMem(struct file *filp, const char *buf, size_t count,
 
 ssize_t readMem(struct file *filp, char *buf, size_t count, loff_t *f_pos)
 {
-	unsigned int ret = 0;
 	struct mark1_mem * mem_to_read = &(((struct mark1_device *) filp->private_data)->data.mem) ;
 	if (copy_to_user(buf, (void *) &(mem_to_read->virt_addr[(*f_pos)/2]), count) ) {
 		return -1 ;
