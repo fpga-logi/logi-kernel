@@ -48,12 +48,16 @@
 
 #define I2_IO_EXP_ADDR	0x70
 
+#define MAX_DMA_TRANSFER_IN_BYTES   (32768)
+
 
 static int mark1_dm_open(struct inode *inode, struct file *filp);
 static int mark1_dm_release(struct inode *inode, struct file *filp);
 static ssize_t mark1_dm_write(struct file *filp, const char *buf, size_t count, loff_t *f_pos);
 static ssize_t mark1_dm_read(struct file *filp, char *buf, size_t count, loff_t *f_pos);
 static long mark1_dm_ioctl(struct file *filp, unsigned int cmd, unsigned long arg);
+int edma_memtomemcpy(int count, unsigned long src_addr, unsigned long trgt_addr, int dma_ch);
+static void dma_callback(unsigned lch, u16 ch_status, void *data);
 int loadBitFile(struct i2c_client * io_cli, const unsigned char * bitBuffer_user, unsigned int length);
 
 
@@ -79,9 +83,12 @@ struct mark1_prog{
 	struct i2c_client * i2c_io;
 };
 
+
 struct mark1_mem{
 	unsigned short * base_addr ;
 	unsigned short * virt_addr ;
+	unsigned char * dma_buf ;
+	int dma_chan ;
 };
 
 union mark1_data{
@@ -97,6 +104,10 @@ struct mark1_device{
 };
 
 
+dma_addr_t dmaphysbuf = 0;
+dma_addr_t dmapGpmcbuf = FPGA_BASE_ADDR;
+static volatile int irqraised1 = 0;
+
 static char * gDrvrName = DEVICE_NAME;
 static unsigned char gDrvrMajor = 0 ;
 
@@ -107,14 +118,15 @@ struct device * prog_device ;
 struct class * mark1_class ;
 struct mark1_device * mark1_devices ;
 
-volatile unsigned * gpio_regs ;
-
 
 inline void __delay_cycles(unsigned long cycles){
 	while(cycles != 0){
 		cycles -- ;	
 	}
 }
+
+volatile unsigned * gpio_regs ;
+
 
 inline void ssiSetClk(void){
 	//gpio_set_value(SSI_CLK, 1);
@@ -142,13 +154,11 @@ inline void serialConfigWriteByte(unsigned char val){
 
 	for(bitCount = 0; bitCount < 8; bitCount ++){
 		ssiClearClk();
-
 		if((valBuf & 0x80) != 0){
 			ssiSetData();
 		}else{
 			ssiClearData();
 		}
-
 		__delay_cycles(SSI_DELAY);	
 		ssiSetClk();
 		valBuf = (valBuf << 1);
@@ -171,7 +181,7 @@ inline unsigned char i2c_get_pin(struct i2c_client * io_cli, unsigned char pin){
 	i2c_master_recv(io_cli, i2c_buffer, 2);
 	//printk("reading value %x \n", i2c_buffer);
 
-	return i2c_buffer[0];
+	return i2c_buffer[0] ;
 }
 
 inline unsigned char i2c_get_pin_ex(struct i2c_client * io_cli, unsigned char pin){
@@ -180,7 +190,7 @@ inline unsigned char i2c_get_pin_ex(struct i2c_client * io_cli, unsigned char pi
 	i2c_master_send(io_cli, &pin, 1);
 	i2c_master_recv(io_cli, i2c_buffer, 2);
 
-	return i2c_buffer[1] ;
+	return i2c_buffer[1];
 }
 
 int loadBitFile(struct i2c_client * io_cli, const unsigned char * bitBuffer_user, const unsigned int length){
@@ -198,8 +208,8 @@ int loadBitFile(struct i2c_client * io_cli, const unsigned char * bitBuffer_user
 
 	if(bitBuffer == NULL || copy_from_user(bitBuffer, bitBuffer_user, length)){
 		printk("Failed allocate buffer for configuration file \n");
-
-		return -ENOTTY;
+	
+		return -ENOTTY;	
 	}
 
 	cfg = gpio_request(SSI_CLK, "ssi_clk");
@@ -224,7 +234,7 @@ int loadBitFile(struct i2c_client * io_cli, const unsigned char * bitBuffer_user
 
 	gpio_direction_output(SSI_CLK, 0);
 	gpio_direction_output(SSI_DATA, 0);
-	
+
 	gpio_set_value(SSI_CLK, 0);
 	//i2c_set_pin(io_cli, SSI_PROG, 1);
 	//__delay_cycles(10*SSI_DELAY);	
@@ -293,33 +303,127 @@ int loadBitFile(struct i2c_client * io_cli, const unsigned char * bitBuffer_user
 	return length ;
 }
 
-ssize_t writeMem(struct file *filp, const char *buf, size_t count, loff_t *f_pos)
+ssize_t writeMem(struct file *filp, const char *buf, size_t count,
+                       loff_t *f_pos)
 {
-	unsigned short sBuf ;
+	unsigned short int transfer_size  ;
+	ssize_t transferred = 0 ;
+	unsigned long src_addr, trgt_addr ;
+	unsigned int ret = 0;
 	struct mark1_mem * mem_to_write = &(((struct mark1_device *) filp->private_data)->data.mem) ;
-
-	if(count == 2){
-		if(copy_from_user(&sBuf, buf, count)) return -1 ;
-		mem_to_write->virt_addr[(*f_pos)/2] = sBuf ;
-		return count ;	
+	
+	if(count%2 != 0){
+		 printk("%s: MARK1_fifo write: Transfer must be 16bits aligned.\n",gDrvrName);
+		 return -1;
 	}
 
-	if (copy_from_user((void *) &(mem_to_write->virt_addr[(*f_pos)/2]), buf, count) ) {
-		return -1 ;		
+	if(count < MAX_DMA_TRANSFER_IN_BYTES){
+		transfer_size = count ;
+	}else{
+		transfer_size = MAX_DMA_TRANSFER_IN_BYTES ;
 	}
 
-	return count;
+	//writeBuffer =  (unsigned char *) dma_alloc_coherent (NULL, MAX_DMA_TRANSFER_IN_BYTES, &dmaphysbuf, 0);
+	writeBuffer = mem_to_write->dma_buf ;
+
+	if(writeBuffer == NULL){
+		printk("failed to allocate DMA buffer \n");
+		return -1 ;	
+	}
+
+	trgt_addr = (unsigned long) &(mem_to_write->base_addr[(*f_pos)/2]) ;
+	src_addr = (unsigned long) dmaphysbuf ;
+
+	if (copy_from_user(writeBuffer, buf, transfer_size) ) {
+		ret = -1;
+		goto exit;
+	}
+
+	while(transferred < count){
+		if(edma_memtomemcpy(transfer_size, src_addr , trgt_addr,  mem_to_write->dma_chan) < 0){
+			printk("%s: MARK1_fifo write: Failed to trigger EDMA transfer.\n",gDrvrName);		
+			ret = -1 ;			
+			goto exit;		
+		}
+		trgt_addr += transfer_size ;
+		transferred += transfer_size ;
+		if((count - transferred) < MAX_DMA_TRANSFER_IN_BYTES){
+			transfer_size = count - transferred ;
+		}else{
+			transfer_size = MAX_DMA_TRANSFER_IN_BYTES ;
+		}
+		if (copy_from_user(writeBuffer, &buf[transferred], transfer_size) ) {
+			ret = -1;
+			goto exit;
+		}	
+	}
+
+	ret = transferred;
+
+	exit:
+	/*dma_free_coherent(NULL, MAX_DMA_TRANSFER_IN_BYTES, writeBuffer,
+				dmaphysbuf);*/// free coherent before copy to user
+
+	return (ret);
 }
 
 ssize_t readMem(struct file *filp, char *buf, size_t count, loff_t *f_pos)
 {
+	unsigned short int transfer_size ;
+	ssize_t transferred = 0 ;
+	unsigned long src_addr, trgt_addr ;
+	int ret = 0 ;
+	
 	struct mark1_mem * mem_to_read = &(((struct mark1_device *) filp->private_data)->data.mem) ;
 
-	if (copy_to_user(buf, (void *) &(mem_to_read->virt_addr[(*f_pos)/2]), count) ) {
-		return -1 ;
+	if(count%2 != 0){
+		 printk("%s: MARK1_fifo read: Transfer must be 16bits aligned.\n",gDrvrName);
+		 return -1 ;
 	}
 
-	return count;
+	if(count < MAX_DMA_TRANSFER_IN_BYTES){
+		transfer_size = count ;
+	}else{
+		transfer_size = MAX_DMA_TRANSFER_IN_BYTES ;
+	}
+
+	readBuffer = mem_to_read->dma_buf; //(unsigned char *) dma_alloc_coherent (NULL, MAX_DMA_TRANSFER_IN_BYTES, &dmaphysbuf, 0);
+		
+	if(readBuffer == NULL){
+		printk("failed to allocate DMA buffer \n");
+		return -1 ;	
+	}
+
+	src_addr = (unsigned long) &(mem_to_read->base_addr[(*f_pos)/2]);
+	trgt_addr = (unsigned long) dmaphysbuf ;
+
+	while(transferred < count){
+		if(edma_memtomemcpy(transfer_size, src_addr, trgt_addr,  mem_to_read->dma_chan) < 0){
+		
+			printk("%s: MARK1_fifo read: Failed to trigger EDMA transfer.\n",gDrvrName);
+			goto exit ;
+		}	
+
+		if (copy_to_user(&buf[transferred], readBuffer, transfer_size)){
+			ret = -1;
+			goto exit;
+		}
+
+		src_addr += transfer_size ;
+		transferred += transfer_size ;
+
+		if((count - transferred) < MAX_DMA_TRANSFER_IN_BYTES){
+			transfer_size = (count - transferred) ;
+		}else{
+			transfer_size = MAX_DMA_TRANSFER_IN_BYTES ;
+		}
+	}
+	/*dma_free_coherent(NULL,  MAX_DMA_TRANSFER_IN_BYTES, readBuffer,
+			dmaphysbuf);*/
+	ret = transferred ;
+	exit:
+
+	return ret;
 }
 
 static int mark1_dm_open(struct inode *inode, struct file *filp)
@@ -328,16 +432,14 @@ static int mark1_dm_open(struct inode *inode, struct file *filp)
 	struct mark1_mem * mem_dev ;
 
 	filp->private_data = dev; /* for other methods */
-
+	
 	if(dev == NULL){
 		printk("Failed to retrieve mark1 structure !\n");
-
 		return -1 ;	
 	}
 
 	if(dev->opened == 1){
 		printk("%s: module already opened\n", gDrvrName);
-
 		return 0 ;
 	}
 
@@ -345,20 +447,31 @@ static int mark1_dm_open(struct inode *inode, struct file *filp)
 		mem_dev = &((dev->data).mem) ;
 		request_mem_region((unsigned long) mem_dev->base_addr, FPGA_MEM_SIZE, gDrvrName);
 		mem_dev->virt_addr = ioremap_nocache(((unsigned long) mem_dev->base_addr), FPGA_MEM_SIZE);
+		mem_dev->dma_chan = edma_alloc_channel (EDMA_CHANNEL_ANY, dma_callback, NULL, EVENTQ_0);
+		mem_dev->dma_buf = (unsigned char *) dma_alloc_coherent (NULL, MAX_DMA_TRANSFER_IN_BYTES, &dmaphysbuf, 0);
+		printk("EDMA channel %d reserved \n", mem_dev->dma_chan);			
+
+		if (mem_dev->dma_chan < 0) {
+			printk ("\nedma3_memtomemcpytest_dma::edma_alloc_channel failed for dma_ch, error:%d\n", mem_dev->dma_chan);
+
+			return -1;
+		}
+
 		printk("mem interface opened \n");	
 	}
 
-	dev->opened = 1;
+	dev->opened = 1 ;
 
 	return 0;
 }
 
 static int mark1_dm_release(struct inode *inode, struct file *filp)
 {
-	struct mark1_device * dev = container_of(inode->i_cdev, struct mark1_device, cdev);;
+	struct mark1_device * dev = container_of(inode->i_cdev, struct mark1_device, cdev);
 
 	if(dev->opened == 0){
 		printk("%s: module already released\n", gDrvrName);
+
 		return 0 ;
 	}
 
@@ -366,6 +479,8 @@ static int mark1_dm_release(struct inode *inode, struct file *filp)
 		iounmap((dev->data.mem).virt_addr);
 		release_mem_region(((unsigned long) (dev->data.mem).base_addr), FPGA_MEM_SIZE );
 		printk("%s: Release: module released\n",gDrvrName);
+		dma_free_coherent(NULL,  MAX_DMA_TRANSFER_IN_BYTES, (dev->data.mem).dma_buf, dmaphysbuf);
+		edma_free_channel((dev->data.mem).dma_chan);
 	}
 
 	dev->opened = 0 ;
@@ -375,10 +490,10 @@ static int mark1_dm_release(struct inode *inode, struct file *filp)
 
 static ssize_t mark1_dm_write(struct file *filp, const char *buf, size_t count, loff_t *f_pos)
 {
-	struct mark1_device * dev = filp->private_data ; /* for other methods */
+	struct mark1_device * dev = filp->private_data; /* for other methods */
 
 	switch(dev->type){
-		case prog :		
+		case prog :
 			return loadBitFile((dev->data.prog.i2c_io), buf, count);
 
 		case mem:
@@ -391,7 +506,7 @@ static ssize_t mark1_dm_write(struct file *filp, const char *buf, size_t count, 
 
 static ssize_t mark1_dm_read(struct file *filp, char *buf, size_t count, loff_t *f_pos)
 {
-	struct mark1_device * dev = filp->private_data ; /* for other methods */
+	struct mark1_device * dev = filp->private_data; /* for other methods */
 
 	switch(dev->type){
 		case prog :
@@ -436,13 +551,12 @@ static void mark1_dm_exit(void)
 }
 
 static int mark1_dm_init(void)
-{
+{		
 	int result;
 	int devno ;
 	struct mark1_mem * memDev ;
 	struct mark1_prog * progDev ;
 	struct i2c_adapter *i2c_adap;
-
         dev_t dev = 0;
 	result = alloc_chrdev_region(&dev, 0, 2, gDrvrName);
         gDrvrMajor = MAJOR(dev);
@@ -510,7 +624,63 @@ fail:
         mark1_dm_exit();
 
         return -1 ;
+}
 
+int edma_memtomemcpy(int count, unsigned long src_addr, unsigned long trgt_addr, int dma_ch)
+{
+	int result = 0;
+	struct edmacc_param param_set;
+
+	edma_set_src (dma_ch, src_addr, INCR, W256BIT);
+	edma_set_dest (dma_ch, trgt_addr, INCR, W256BIT);
+	edma_set_src_index (dma_ch, 1, 1);
+	edma_set_dest_index (dma_ch, 1, 1);
+	/* A Sync Transfer Mode */
+	edma_set_transfer_params (dma_ch, count, 1, 1, 1, ASYNC); //one block of one frame of one array of count bytes
+
+	/* Enable the Interrupts on Channel 1 */
+	edma_read_slot (dma_ch, &param_set);
+	param_set.opt |= ITCINTEN;
+	param_set.opt |= TCINTEN;
+	param_set.opt |= EDMA_TCC(EDMA_CHAN_SLOT(dma_ch));
+	edma_write_slot (dma_ch, &param_set);
+	irqraised1 = 0u;
+	result = edma_start(dma_ch);
+	
+	if (result != 0) {
+		printk ("edma copy for mark1_fifo failed \n");
+		
+	}
+
+	while (irqraised1 == 0u) udelay(5);//schedule();
+	//irqraised1 = 0u;
+	//irqraised1 = -1 ;
+
+	/* Check the status of the completed transfer */
+	if (irqraised1 < 0) {
+		printk ("edma copy for mark1_fifo: Event Miss Occured!!!\n");
+	}
+
+	edma_stop(dma_ch);
+
+	return result;
+}
+
+static void dma_callback(unsigned lch, u16 ch_status, void *data)
+{	
+	switch(ch_status) {
+		case DMA_COMPLETE:
+			irqraised1 = 1;
+			break;
+
+		case DMA_CC_ERROR:
+			irqraised1 = -1;
+			break;
+
+		default:
+			irqraised1 = -1;
+			break;
+	}
 }
 
 static const struct of_device_id mark1_of_match[] = {
