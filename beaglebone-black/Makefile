@@ -5,7 +5,7 @@ ifneq ($(KERNELRELEASE),)
 	obj-m += logibone_ra2.o
 	obj-m += logibone_ra2_dm.o
 	obj-m += logibone_ra1_dm.o
-	obj-m += mark1_dm.o
+	#obj-m += mark1_dm.o
 	obj-m += logibone_ra2_dma.o
 # Otherwise we were called directly from the command
 # line; invoke the kernel build system.

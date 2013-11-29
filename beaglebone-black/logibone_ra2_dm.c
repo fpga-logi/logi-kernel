@@ -286,33 +286,67 @@ int loadBitFile(struct i2c_client * io_cli, const unsigned char * bitBuffer_user
 	return length ;
 }
 
+//; run gpmcreg
+//gpmcreg=mw.b 0x50000050 0x10 1
 
 
-ssize_t writeMem(struct file *filp, const char *buf, size_t count,
+ssize_t writeMem(struct file *filp, const char __user  *buf, size_t count,
                        loff_t *f_pos)
 {
 	unsigned int ret = 0;
 	unsigned short sBuf ;
+	unsigned char * tempBuffer ;
 	struct logibone_mem * mem_to_write = &(((struct logibone_device *) filp->private_data)->data.mem) ;
+	if(buf == NULL) return -1 ;
 	if(count == 2){
 		if(copy_from_user(&sBuf, buf, count)) return -1 ;
 		mem_to_write->virt_addr[(*f_pos)/2] = sBuf ; 
 		return count ;	
 	}
-	if (copy_from_user((void *) &(mem_to_write->virt_addr[(*f_pos)/2]), buf, count) ) {
+	tempBuffer = kmalloc(count, GFP_KERNEL);
+	if(tempBuffer == NULL){
+		 printk("Failed to allocate memory for transfer\n");
+		 kfree(tempBuffer);
+		 return -1 ;
+	}
+	if (copy_from_user(tempBuffer, buf, count) ) {
+		printk("Failed to copy from user\n");
+		kfree(tempBuffer);
 		return -1 ;		
 	}
+	if (memcpy((void *) &(mem_to_write->virt_addr[(*f_pos)/2]), tempBuffer, count) == NULL) {
+		printk("Failed to copy to FPGA\n");
+		kfree(tempBuffer);		
+		return -1 ;		
+	}
+	kfree(tempBuffer);
 	return count;
 }
 
 
-ssize_t readMem(struct file *filp, char *buf, size_t count, loff_t *f_pos)
+ssize_t readMem(struct file *filp, char __user *buf, size_t count, loff_t *f_pos)
 {
 	unsigned int ret = 0;
+	unsigned char * tempBuffer ;
 	struct logibone_mem * mem_to_read = &(((struct logibone_device *) filp->private_data)->data.mem) ;
-	if (copy_to_user(buf, (void *) &(mem_to_read->virt_addr[(*f_pos)/2]), count) ) {
+	if(buf == NULL) return -1 ;
+	tempBuffer = kmalloc(count, GFP_KERNEL);
+	if(tempBuffer == NULL){
+		 printk("Failed to allocate memory for transfer\n");
+		 kfree(tempBuffer);		 
+		 return -1 ;
+	}
+	if (memcpy(tempBuffer, (void *) &(mem_to_read->virt_addr[(*f_pos)/2]), count) == NULL) {
+		printk("Failed to copy from FPGA\n");
+		kfree(tempBuffer);
+		return -1 ;		
+	}
+	if (copy_to_user(buf, tempBuffer, count) ) {
+		printk("Failed to copy to user\n");
+		kfree(tempBuffer);		
 		return -1 ;
 	}
+	kfree(tempBuffer);
 	return count;
 }
 
