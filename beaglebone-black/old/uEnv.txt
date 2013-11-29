@@ -1,0 +1,31 @@
+kernel_file=zImage
+initrd_file=uInitrd
+initrd_high=0xffffffff
+fdt_high=0xffffffff
+
+console=ttyO0,115200n8
+gpmcreg=mw.b 0x50000050 0x10 1
+
+mmcreset=mmc dev 1; mmc rstn 1; gpio set 52
+
+mmcroot=/dev/mmcblk0p2 ro
+mmcrootfstype=ext4 rootwait fixrtc
+
+loadkernel=load mmc ${mmcdev}:${mmcpart} 0x80200000 ${kernel_file}
+loadinitrd=load mmc ${mmcdev}:${mmcpart} 0x81000000 ${initrd_file}; setenv initrd_size ${filesize}
+loadfdt=load mmc ${mmcdev}:${mmcpart} 0x815f0000 /dtbs/${fdtfile}
+
+boot_classic=run loadkernel; run loadinitrd
+boot_ftd=run loadkernel; run loadinitrd; run loadfdt
+
+video_args=setenv video 
+device_args=run video_args; run expansion_args; run mmcargs
+mmcargs=setenv bootargs console=${console} ${optargs} ${video} root=${mmcroot} rootfstype=${mmcrootfstype} ${expansion}
+
+optargs=capemgr.disable_partno=BB-BONE-EMMC-2G,BB-BONELT-HDMI,BB-BONELT-HDMIN
+expansion_args=setenv expansion ip=${ip_method}
+#Classic Board File Boot:
+#uenvcmd=run boot_classic; run device_args; bootz 0x80200000 0x81000000:${initrd_size}
+#New Device Tree Boot:
+uenvcmd=run mmcreset; run gpmcreg; run boot_ftd; run device_args; bootz 0x80200000 0x81000000:${initrd_size} 0x815f0000
+

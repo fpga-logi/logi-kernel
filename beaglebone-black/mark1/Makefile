@@ -1,12 +1,8 @@
 # If KERNELRELEASE is defined, we've been invoked from the
 # kernel build system and can use its language.
 ifneq ($(KERNELRELEASE),)
-	obj-m := logibone_ra1.o
-	obj-m += logibone_ra2.o
-	obj-m += logibone_ra2_dm.o
-	obj-m += logibone_ra1_dm.o
-	#obj-m += mark1_dm.o
-	obj-m += logibone_ra2_dma.o
+	obj-m += mark1_dm.o
+	obj-m += mark1_dma.o
 # Otherwise we were called directly from the command
 # line; invoke the kernel build system.
 else
