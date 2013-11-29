@@ -1,15 +1,18 @@
 #!/bin/sh
 
-CC_PREFIX=/home/jpiat/development/KERNEL/ARM/beaglebone-black/linux-dev/dl/gcc-linaro-arm-linux-gnueabihf-4.7-2013.04-20130415_linux/bin/arm-linux-gnueabihf-
 
-make ARCH=arm CROSS_COMPILE=${CC_PREFIX} KERNELDIR=~/development/KERNEL/ARM/beaglebone-black/linux-dev/KERNEL
-mkdir beaglebone_black_build
-cp *.ko beaglebone_black_build
+
+CC_PREFIX=#fill with the location of toolchain and target triplet
+KERNEL_DIR=#fill with the location of you kernel sources
+
+
+cd logibone_ra1
 make clean
-
-make ARCH=arm CROSS_COMPILE=${CC_PREFIX} KERNELDIR=~/development/KERNEL/ARM/beaglebone/linux-dev/KERNEL
-mkdir beaglebone_build
-cp *.ko  beaglebone_build
+make ARCH=arm CROSS_COMPILE=${CC_PREFIX} KERNELDIR=${KERNEL_DIR}
+cd ../logibone_ra2
 make clean
-
+make ARCH=arm CROSS_COMPILE=${CC_PREFIX} KERNELDIR=${KERNEL_DIR}
+cd ../mark1
+make clean
+make ARCH=arm CROSS_COMPILE=${CC_PREFIX} KERNELDIR=${KERNEL_DIR}
 
