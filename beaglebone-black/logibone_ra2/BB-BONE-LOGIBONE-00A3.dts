@@ -144,7 +144,7 @@
 				gpmc,sync-clk-ps = <20000>;	/* CONFIG2 */
 
 				gpmc,cs-on-ns = <0>;
-				gpmc,cs-rd-off-ns = <80>;
+				gpmc,cs-rd-off-ns = <100>;
 				gpmc,cs-wr-off-ns = <40>;
 
 				gpmc,adv-on-ns = <0>;		/* CONFIG3 */
@@ -154,11 +154,11 @@
 				gpmc,we-on-ns = <20>;		/* CONFIG4 */
 				gpmc,we-off-ns = <40>;
 				gpmc,oe-on-ns = <20>;
-				gpmc,oe-off-ns = <80>;
+				gpmc,oe-off-ns = <100>;
 
 				gpmc,page-burst-access-ns = <20>;	/* CONFIG 5 */
 				gpmc,access-ns = <80>;
-				gpmc,rd-cycle-ns = <100>;
+				gpmc,rd-cycle-ns = <120>;
 				gpmc,wr-cycle-ns = <60>;
 				gpmc,wr-access-ns = <40>;		/* CONFIG 6 */
 				gpmc,wr-data-mux-bus-ns = <20>;
