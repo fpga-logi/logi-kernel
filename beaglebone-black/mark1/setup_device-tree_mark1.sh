@@ -25,8 +25,8 @@ sh -c "echo BB-BONE-MARK1:00A1 > /sys/devices/bone_capemgr.8/slots "
 cat  /sys/devices/bone_capemgr.*/slots
 
 if [ "$bDma" ];then
-	insmod _mark1_dma.ko
+	insmod mark1_dma.ko
 else
-	insmod _mark1_dm.ko
+	insmod mark1_dm.ko
 fi
 
