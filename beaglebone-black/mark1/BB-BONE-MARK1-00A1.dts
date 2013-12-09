@@ -59,29 +59,29 @@
 
 			gpmc_pins: pinmux_gpmc_pins {
 				pinctrl-single,pins = <
-					0x000 0x20	/* gpmc_ad0.gpmc_ad0 MODE0 | INPUT | PULLUP */
-					0x004 0x20	/* gpmc_ad1.gpmc_ad1 MODE0 | INPUT | PULLUP */
-					0x008 0x20	/* gpmc_ad2.gpmc_ad2 MODE0 | INPUT | PULLUP */
-					0x00C 0x20	/* gpmc_ad3.gpmc_ad3 MODE0 | INPUT | PULLUP */
-					0x010 0x20	/* gpmc_ad4.gpmc_ad4 MODE0 | INPUT | PULLUP */
-					0x014 0x20	/* gpmc_ad5.gpmc_ad5 MODE0 | INPUT | PULLUP */
-					0x018 0x20	/* gpmc_ad6.gpmc_ad6 MODE0 | INPUT | PULLUP */
-					0x01C 0x20	/* gpmc_ad7.gpmc_ad7 MODE0 | INPUT | PULLUP */
-					0x020 0x20	/* gpmc_ad8.gpmc_ad8 MODE0 | INPUT | PULLUP */
-					0x024 0x20	/* gpmc_ad9.gpmc_ad9 MODE0 | INPUT | PULLUP */
-					0x028 0x20	/* gpmc_ad10.gpmc_ad10 MODE0 | INPUT | PULLUP */
-					0x02C 0x20	/* gpmc_ad11.gpmc_ad11 MODE0 | INPUT | PULLUP */
-					0x030 0x20	/* gpmc_ad12.gpmc_ad12 MODE0 | INPUT | PULLUP */
-					0x034 0x20	/* gpmc_ad13.gpmc_ad13 MODE0 | INPUT | PULLUP */
-					0x038 0x20	/* gpmc_ad14.gpmc_ad14 MODE0 | INPUT | PULLUP */
-					0x03C 0x20	/* gpmc_ad15.gpmc_ad15 MODE0 | INPUT | PULLUP */
-					0x080 0x20	/* gpmc_cscn1.gpmc_cscn1 MODE0 | OUTPUT */
-					0x08C 0x00	/* gpmc_clk.gpmc_clk MODE0 | OUTPUT */
-					0x090 0x00	/* gpmc_advn_ale.gpmc_advn_ale MODE0 | OUTPUT */
-					0x094 0x20	/* gpmc_oen_ren.gpmc_oen_ren MODE0 | OUTPUT */
-					0x098 0x20	/* gpmc_wen.gpmc_wen MODE0 | OUTPUT */
-					0x09C 0x20	/* gpmc_ben0_cle.gpmc_ben0_cle MODE0 | OUTPUT */
-					0x078 0x20	/* gpmc_ben1_cle.gpmc_ben1_cle MODE0 | OUTPUT */
+					0x000 0x30	/* gpmc_ad0.gpmc_ad0 MODE0 | INPUT | PULLUP */
+					0x004 0x30	/* gpmc_ad1.gpmc_ad1 MODE0 | INPUT | PULLUP */
+					0x008 0x30	/* gpmc_ad2.gpmc_ad2 MODE0 | INPUT | PULLUP */
+					0x00C 0x30	/* gpmc_ad3.gpmc_ad3 MODE0 | INPUT | PULLUP */
+					0x010 0x30	/* gpmc_ad4.gpmc_ad4 MODE0 | INPUT | PULLUP */
+					0x014 0x30	/* gpmc_ad5.gpmc_ad5 MODE0 | INPUT | PULLUP */
+					0x018 0x30	/* gpmc_ad6.gpmc_ad6 MODE0 | INPUT | PULLUP */
+					0x01C 0x30	/* gpmc_ad7.gpmc_ad7 MODE0 | INPUT | PULLUP */
+					0x020 0x30	/* gpmc_ad8.gpmc_ad8 MODE0 | INPUT | PULLUP */
+					0x024 0x30	/* gpmc_ad9.gpmc_ad9 MODE0 | INPUT | PULLUP */
+					0x028 0x30	/* gpmc_ad10.gpmc_ad10 MODE0 | INPUT | PULLUP */
+					0x02C 0x30	/* gpmc_ad11.gpmc_ad11 MODE0 | INPUT | PULLUP */
+					0x030 0x30	/* gpmc_ad12.gpmc_ad12 MODE0 | INPUT | PULLUP */
+					0x034 0x30	/* gpmc_ad13.gpmc_ad13 MODE0 | INPUT | PULLUP */
+					0x038 0x30	/* gpmc_ad14.gpmc_ad14 MODE0 | INPUT | PULLUP */
+					0x03C 0x30	/* gpmc_ad15.gpmc_ad15 MODE0 | INPUT | PULLUP */
+					0x080 0x08	/* gpmc_cscn1.gpmc_cscn1 MODE0 | OUTPUT */
+					0x08C 0x28	/* gpmc_clk.gpmc_clk MODE0 | OUTPUT */
+					0x090 0x08	/* gpmc_advn_ale.gpmc_advn_ale MODE0 | OUTPUT */
+					0x094 0x08	/* gpmc_oen_ren.gpmc_oen_ren MODE0 | OUTPUT */
+					0x098 0x08	/* gpmc_wen.gpmc_wen MODE0 | OUTPUT */
+					0x09C 0x08	/* gpmc_ben0_cle.gpmc_ben0_cle MODE0 | OUTPUT */
+					0x078 0x08	/* gpmc_ben1_cle.gpmc_ben1_cle MODE0 | OUTPUT */
 				>;
 			};
 		
@@ -188,37 +188,33 @@
 	};
 
 	fragment@2 {
-		target = <&ocp>;
+        target = <&spi0>;
+        __overlay__ {
+            #address-cells     = <1>;
+            #size-cells     = <0>;
+            status            = "okay";
+            pinctrl-names    = "default";
+            pinctrl-0        = <&fpga_config_pins>;
+ 
+            spi0_0{
+                #address-cells       = <1>;
+                #size-cells       = <0>;
+                compatible           = "spidev";
+                reg               = <0>;
+                spi-max-frequency = <16000000>;
+                spi-cpha;
+            };
+            spi0_1{
+                #address-cells       = <1>;
+                #size-cells       = <0>;
+                compatible           = "spidev";
+                reg               = <1>;
+                spi-max-frequency = <16000000>;
+                // Mode 0 (CPOL = 0, CPHA = 0)
+            };
+        };
+    };
 
-		__overlay__ {
-
-			status = "okay";
-			/* avoid stupid warning */
-			#address-cells = <2>;
-			#size-cells = <1>;
-	
-
-			fpga_config: ssi_config{
-				compatible = "mark1-pinmux-helper";
-				pinctrl-names = "default";
-
-				pinctrl-0 = <&fpga_config_pins>;
-				status="okay";
-			
-				gpio@1 {
-					label = "ssi_clk";
-					gpios = <&gpio4 14 0>;
-				};
-
-				gpio@2 {
-					label = "ssi_data";
-					gpios = <&gpio4 16 0>;
-				};
-
-			};
-
-		};
-	};
 
  };
 
