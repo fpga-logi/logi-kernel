@@ -27,7 +27,7 @@
 
 
 //SSI
-#define SSI_CLK 02 // to be verified ...
+#define SSI_CLK 02 // to be verified
 #define SSI_DATA 04
 #define SSI_DONE 0x03
 #define SSI_PROG 0x05
@@ -67,12 +67,12 @@ static struct i2c_board_info io_exp_info= {
 };
 
 static struct file_operations mark1_dm_ops = {
-    .read =   mark1_dm_read,
-    .write =  mark1_dm_write,
-    .compat_ioctl =  mark1_dm_ioctl,
-    .unlocked_ioctl = mark1_dm_ioctl,
-    .open =   mark1_dm_open,
-    .release =  mark1_dm_release,
+	.read =   mark1_dm_read,
+	.write =  mark1_dm_write,
+	.compat_ioctl =  mark1_dm_ioctl,
+	.unlocked_ioctl = mark1_dm_ioctl,
+	.open =   mark1_dm_open,
+	.release =  mark1_dm_release,
 };
 
 enum mark1_type{
@@ -196,7 +196,7 @@ inline unsigned char i2c_get_pin_ex(struct i2c_client * io_cli, unsigned char pi
 }
 
 int loadBitFile(struct i2c_client * io_cli, const unsigned char * bitBuffer_user, const unsigned int length){
-	unsigned char cfg = 1;	
+	unsigned char cfg = 1;
 	unsigned char i2c_test;
 	unsigned long int i;
 	unsigned long int timer = 0;
@@ -305,8 +305,7 @@ int loadBitFile(struct i2c_client * io_cli, const unsigned char * bitBuffer_user
 	return length;
 }
 
-ssize_t writeMem(struct file *filp, const char *buf, size_t count,
-                       loff_t *f_pos)
+ssize_t writeMem(struct file *filp, const char *buf, size_t count, loff_t *f_pos)
 {
 	unsigned short int transfer_size ;
 	ssize_t transferred = 0;
@@ -327,7 +326,7 @@ ssize_t writeMem(struct file *filp, const char *buf, size_t count,
 
 	if(mem_to_write->dma_buf == NULL){
 		printk("failed to allocate DMA buffer \n");
-		return -1;	
+		return -1;
 	}
 
 	trgt_addr = (unsigned long) &(mem_to_write->base_addr[(*f_pos)/2]);
@@ -340,9 +339,9 @@ ssize_t writeMem(struct file *filp, const char *buf, size_t count,
 
 	while(transferred < count){
 		if(edma_memtomemcpy(transfer_size, src_addr , trgt_addr,  mem_to_write->dma_chan) < 0){
-			printk("%s: MARK1 write: Failed to trigger EDMA transfer.\n",gDrvrName);		
-			ret = -1;			
-			goto exit;		
+			printk("%s: MARK1 write: Failed to trigger EDMA transfer.\n",gDrvrName);
+			ret = -1;
+			goto exit;
 		}
 
 		trgt_addr += transfer_size;
@@ -357,7 +356,7 @@ ssize_t writeMem(struct file *filp, const char *buf, size_t count,
 		if (copy_from_user(mem_to_write->dma_buf, &buf[transferred], transfer_size) ) {
 			ret = -1;
 			goto exit;
-		}	
+		}
 	}
 
 	ret = transferred;
@@ -389,7 +388,7 @@ ssize_t readMem(struct file *filp, char *buf, size_t count, loff_t *f_pos)
 
 	if(mem_to_read->dma_buf == NULL){
 		printk("failed to allocate DMA buffer \n");
-		return -1;	
+		return -1;
 	}
 
 	src_addr = (unsigned long) &(mem_to_read->base_addr[(*f_pos)/2]);
@@ -432,7 +431,7 @@ static int mark1_dm_open(struct inode *inode, struct file *filp)
 	
 	if(dev == NULL){
 		printk("Failed to retrieve mark1 structure !\n");
-		return -1;	
+		return -1;
 	}
 
 	if(dev->opened == 1){
@@ -446,7 +445,7 @@ static int mark1_dm_open(struct inode *inode, struct file *filp)
 		mem_dev->virt_addr = ioremap_nocache(((unsigned long) mem_dev->base_addr), FPGA_MEM_SIZE);
 		mem_dev->dma_chan = edma_alloc_channel (EDMA_CHANNEL_ANY, dma_callback, NULL, EVENTQ_0);
 		mem_dev->dma_buf = (unsigned char *) dma_alloc_coherent (NULL, MAX_DMA_TRANSFER_IN_BYTES, &dmaphysbuf, 0);
-		printk("EDMA channel %d reserved \n", mem_dev->dma_chan);			
+		printk("EDMA channel %d reserved \n", mem_dev->dma_chan);
 
 		if (mem_dev->dma_chan < 0) {
 			printk ("\nedma3_memtomemcpytest_dma::edma_alloc_channel failed for dma_ch, error:%d\n", mem_dev->dma_chan);
@@ -454,7 +453,7 @@ static int mark1_dm_open(struct inode *inode, struct file *filp)
 			return -1;
 		}
 
-		printk("mem interface opened \n");	
+		printk("mem interface opened \n");
 	}
 
 	dev->opened = 1;
@@ -497,8 +496,8 @@ static ssize_t mark1_dm_write(struct file *filp, const char *buf, size_t count, 
 			return writeMem(filp, buf, count, f_pos);
 
 		default:
-			return loadBitFile((dev->data.prog.i2c_io), buf, count);	
-	};	
+			return loadBitFile((dev->data.prog.i2c_io), buf, count);
+	};
 }
 
 static ssize_t mark1_dm_read(struct file *filp, char *buf, size_t count, loff_t *f_pos)
@@ -513,7 +512,7 @@ static ssize_t mark1_dm_read(struct file *filp, char *buf, size_t count, loff_t 
 			return readMem(filp, buf, count, f_pos);
 
 		default:
-			return -1;	
+			return -1;
 	};
 }
 
@@ -532,7 +531,7 @@ static void mark1_dm_exit(void)
 	if (mark1_devices) {
 		for (i = 0; i < 2; i++) {
 			if(i == 0){
-				i2c_unregister_device(mark1_devices[i].data.prog.i2c_io);			
+				i2c_unregister_device(mark1_devices[i].data.prog.i2c_io);
 			}
 
 			device_destroy(mark1_class, MKDEV(gDrvrMajor, i));
@@ -548,31 +547,31 @@ static void mark1_dm_exit(void)
 }
 
 static int mark1_dm_init(void)
-{		
+{
 	int result;
 	int devno;
 	struct mark1_mem * memDev;
 	struct mark1_prog * progDev;
 	struct i2c_adapter *i2c_adap;
 
-        dev_t dev = 0;
+	dev_t dev = 0;
 	result = alloc_chrdev_region(&dev, 0, 2, gDrvrName);
-        gDrvrMajor = MAJOR(dev);
+	gDrvrMajor = MAJOR(dev);
 
-        if (result < 0) {
-                 printk(KERN_ALERT "Registering char device failed with %d\n", gDrvrMajor);
-                return result;
-        }
+	if (result < 0) {
+		printk(KERN_ALERT "Registering char device failed with %d\n", gDrvrMajor);
+		return result;
+	}
 
-        mark1_devices = kmalloc(2 * sizeof(struct mark1_device), GFP_KERNEL);
+	mark1_devices = kmalloc(2 * sizeof(struct mark1_device), GFP_KERNEL);
 
-        if (! mark1_devices) {
-                result = -ENOMEM;
-                goto fail;  /* Make this more graceful */
-        }
+	if (! mark1_devices) {
+		result = -ENOMEM;
+		goto fail;  /* Make this more graceful */
+	}
 
 	mark1_class = class_create(THIS_MODULE,DEVICE_NAME);
-        memset(mark1_devices, 0, 2 * sizeof(struct mark1_device));
+	memset(mark1_devices, 0, 2 * sizeof(struct mark1_device));
 	
 	/*Initializing main mdevice for prog*/
 	devno = MKDEV(gDrvrMajor, 0);
@@ -594,9 +593,9 @@ static int mark1_dm_init(void)
 	
 	if(prog_device == NULL){
 		class_destroy(mark1_class);
-   	 	result = -ENOMEM;
+		result = -ENOMEM;
 		mark1_devices[0].opened = 0;
-                goto fail;
+		goto fail;
 	}
 
 	cdev_init(&(mark1_devices[0].cdev), &mark1_dm_ops);
@@ -620,9 +619,9 @@ static int mark1_dm_init(void)
 	return 0;
 
 fail:
-        mark1_dm_exit();
+	mark1_dm_exit();
 
-        return -1;
+	return -1;
 }
 
 int edma_memtomemcpy(int count, unsigned long src_addr, unsigned long trgt_addr, int dma_ch)
