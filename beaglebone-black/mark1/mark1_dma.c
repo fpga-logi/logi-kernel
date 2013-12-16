@@ -46,6 +46,7 @@
 #define FPGA_MEM_SIZE	 131072
 
 #define DEVICE_NAME "mark1"
+#define DEVICE_NAME_MEM "mark1_mem"
 
 #define I2_IO_EXP_ADDR	0x70
 
@@ -109,7 +110,6 @@ dma_addr_t dmaphysbuf = 0;
 dma_addr_t dmapGpmcbuf = FPGA_BASE_ADDR;
 static volatile int irqraised1 = 0;
 
-static char * gDrvrName = DEVICE_NAME;
 static unsigned char gDrvrMajor = 0;
 
 struct device * prog_device;
@@ -203,7 +203,7 @@ int loadBitFile(struct i2c_client * io_cli, const unsigned char * bitBuffer_user
 	unsigned char * bitBuffer;	
 	//unsigned char i2c_buffer[4];
 
-	//request_mem_region(GPIO0_BASE + 0x190, 8, gDrvrName);
+	//request_mem_region(GPIO0_BASE + 0x190, 8, DEVICE_NAME);
 	gpio_regs = ioremap_nocache(GPIO0_BASE + 0x190, 2*sizeof(int));
 
 	bitBuffer = kmalloc(length, GFP_KERNEL);
@@ -313,7 +313,7 @@ ssize_t writeMem(struct file *filp, const char *buf, size_t count, loff_t *f_pos
 	struct mark1_mem * mem_to_write = &(((struct mark1_device *) filp->private_data)->data.mem);
 	
 	if(count%2 != 0){
-		 printk("%s: MARK1 write: Transfer must be 16bits aligned.\n",gDrvrName);
+		 printk("%s: write: Transfer must be 16bits aligned.\n",DEVICE_NAME);
 
 		 return -1;
 	}
@@ -339,7 +339,7 @@ ssize_t writeMem(struct file *filp, const char *buf, size_t count, loff_t *f_pos
 
 	while(transferred < count){
 		if(edma_memtomemcpy(transfer_size, src_addr , trgt_addr,  mem_to_write->dma_chan) < 0){
-			printk("%s: MARK1 write: Failed to trigger EDMA transfer.\n",gDrvrName);
+			printk("%s: write: Failed to trigger EDMA transfer.\n",DEVICE_NAME);
 
 			return -1;
 		}
@@ -370,7 +370,7 @@ ssize_t readMem(struct file *filp, char *buf, size_t count, loff_t *f_pos)
 	struct mark1_mem * mem_to_read = &(((struct mark1_device *) filp->private_data)->data.mem);
 
 	if(count%2 != 0){
-		 printk("%s: MARK1 read: Transfer must be 16bits aligned.\n",gDrvrName);
+		 printk("%s: read: Transfer must be 16bits aligned.\n",DEVICE_NAME);
 
 		 return -1;
 	}
@@ -393,7 +393,7 @@ ssize_t readMem(struct file *filp, char *buf, size_t count, loff_t *f_pos)
 	while(transferred < count){
 		if(edma_memtomemcpy(transfer_size, src_addr, trgt_addr,  mem_to_read->dma_chan) < 0){
 		
-			printk("%s: MARK1 read: Failed to trigger EDMA transfer.\n",gDrvrName);
+			printk("%s: read: Failed to trigger EDMA transfer.\n",DEVICE_NAME);
 
 			return -1;
 		}	
@@ -429,21 +429,21 @@ static int mark1_dm_open(struct inode *inode, struct file *filp)
 	}
 
 	if(dev->opened == 1){
-		printk("%s: module already opened\n", gDrvrName);
+		printk("%s: module already opened\n", DEVICE_NAME);
 
 		return 0;
 	}
 
 	if(dev->type != prog){
 		mem_dev = &((dev->data).mem);
-		request_mem_region((unsigned long) mem_dev->base_addr, FPGA_MEM_SIZE, gDrvrName);
+		request_mem_region((unsigned long) mem_dev->base_addr, FPGA_MEM_SIZE, DEVICE_NAME);
 		mem_dev->virt_addr = ioremap_nocache(((unsigned long) mem_dev->base_addr), FPGA_MEM_SIZE);
 		mem_dev->dma_chan = edma_alloc_channel (EDMA_CHANNEL_ANY, dma_callback, NULL, EVENTQ_0);
 		mem_dev->dma_buf = (unsigned char *) dma_alloc_coherent (NULL, MAX_DMA_TRANSFER_IN_BYTES, &dmaphysbuf, 0);
 		printk("EDMA channel %d reserved \n", mem_dev->dma_chan);
 
 		if (mem_dev->dma_chan < 0) {
-			printk ("\nedma3_memtomemcpytest_dma::edma_alloc_channel failed for dma_ch, error:%d\n", mem_dev->dma_chan);
+			printk ("edma_alloc_channel failed for dma_ch, error: %d\n", mem_dev->dma_chan);
 
 			return -1;
 		}
@@ -461,7 +461,7 @@ static int mark1_dm_release(struct inode *inode, struct file *filp)
 	struct mark1_device * dev = container_of(inode->i_cdev, struct mark1_device, cdev);
 
 	if(dev->opened == 0){
-		printk("%s: module already released\n", gDrvrName);
+		printk("%s: module already released\n", DEVICE_NAME);
 
 		return 0;
 	}
@@ -469,7 +469,7 @@ static int mark1_dm_release(struct inode *inode, struct file *filp)
 	if(dev->type == mem){
 		iounmap((dev->data.mem).virt_addr);
 		release_mem_region(((unsigned long) (dev->data.mem).base_addr), FPGA_MEM_SIZE );
-		printk("%s: Release: module released\n",gDrvrName);
+		printk("%s: Release: module released\n",DEVICE_NAME);
 		dma_free_coherent(NULL,  MAX_DMA_TRANSFER_IN_BYTES, (dev->data.mem).dma_buf, dmaphysbuf);
 		edma_free_channel((dev->data.mem).dma_chan);
 	}
@@ -550,7 +550,7 @@ static int mark1_dm_init(void)
 	struct i2c_adapter *i2c_adap;
 
 	dev_t dev = 0;
-	result = alloc_chrdev_region(&dev, 0, 2, gDrvrName);
+	result = alloc_chrdev_region(&dev, 0, 2, DEVICE_NAME);
 	gDrvrMajor = MAJOR(dev);
 
 	if (result < 0) {
@@ -602,13 +602,13 @@ static int mark1_dm_init(void)
 	mark1_devices[0].cdev.owner = THIS_MODULE;
 	mark1_devices[0].cdev.ops = &mark1_dm_ops;
 	cdev_add(&(mark1_devices[0].cdev), devno, 1);
-	//printk(KERN_INFO "'mknod /dev/%s c %d %d'.\n", gDrvrName, gDrvrMajor, 0);
+	//printk(KERN_INFO "'mknod /dev/%s c %d %d'.\n", DEVICE_NAME, gDrvrMajor, 0);
 	/* Initialize each device. */
 	devno = MKDEV(gDrvrMajor, 1);
 	mark1_devices[1].type = mem;
 	memDev = &(mark1_devices[1].data.mem);
 	memDev->base_addr = (unsigned short *) (FPGA_BASE_ADDR);
-	device_create(mark1_class, prog_device, devno, NULL, "mark1_mem");
+	device_create(mark1_class, prog_device, devno, NULL, DEVICE_NAME_MEM);
 	cdev_init(&(mark1_devices[1].cdev), &mark1_dm_ops);
 	(mark1_devices[1].cdev).owner = THIS_MODULE;
 	(mark1_devices[1].cdev).ops = &mark1_dm_ops;
@@ -642,14 +642,14 @@ int edma_memtomemcpy(int count, unsigned long src_addr, unsigned long trgt_addr,
 	result = edma_start(dma_ch);
 
 	if (result != 0) {
-		printk ("edma copy for mark1 failed \n");
+		printk ("%s: edma copy failed \n", DEVICE_NAME);
 	}
 
 	wait_for_completion(&dma_comp);
 
 	/* Check the status of the completed transfer */
 	if (irqraised1 < 0) {
-		printk ("edma copy for mark1: Event Miss Occured!!!\n");
+		printk ("%s: edma copy: Event Miss Occured!!!\n", DEVICE_NAME);
 		edma_stop(dma_ch);
 		result = -EAGAIN;
 	}
@@ -677,7 +677,7 @@ static void dma_callback(unsigned lch, u16 ch_status, void *data)
 }
 
 static const struct of_device_id mark1_of_match[] = {
-	{ .compatible = "mark1", },
+	{ .compatible = DEVICE_NAME, },
 	{ },
 };
 
