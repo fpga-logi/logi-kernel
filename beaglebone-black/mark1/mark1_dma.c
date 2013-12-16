@@ -310,11 +310,11 @@ ssize_t writeMem(struct file *filp, const char *buf, size_t count, loff_t *f_pos
 	unsigned short int transfer_size ;
 	ssize_t transferred = 0;
 	unsigned long src_addr, trgt_addr;
-	unsigned int ret = 0;
 	struct mark1_mem * mem_to_write = &(((struct mark1_device *) filp->private_data)->data.mem);
 	
 	if(count%2 != 0){
 		 printk("%s: MARK1 write: Transfer must be 16bits aligned.\n",gDrvrName);
+
 		 return -1;
 	}
 
@@ -326,6 +326,7 @@ ssize_t writeMem(struct file *filp, const char *buf, size_t count, loff_t *f_pos
 
 	if(mem_to_write->dma_buf == NULL){
 		printk("failed to allocate DMA buffer \n");
+
 		return -1;
 	}
 
@@ -333,15 +334,14 @@ ssize_t writeMem(struct file *filp, const char *buf, size_t count, loff_t *f_pos
 	src_addr = (unsigned long) dmaphysbuf;
 
 	if (copy_from_user(mem_to_write->dma_buf, buf, transfer_size) ) {
-		ret = -1;
-		goto exit;
+		return -1;
 	}
 
 	while(transferred < count){
 		if(edma_memtomemcpy(transfer_size, src_addr , trgt_addr,  mem_to_write->dma_chan) < 0){
 			printk("%s: MARK1 write: Failed to trigger EDMA transfer.\n",gDrvrName);
-			ret = -1;
-			goto exit;
+
+			return -1;
 		}
 
 		trgt_addr += transfer_size;
@@ -354,16 +354,11 @@ ssize_t writeMem(struct file *filp, const char *buf, size_t count, loff_t *f_pos
 		}
 
 		if (copy_from_user(mem_to_write->dma_buf, &buf[transferred], transfer_size) ) {
-			ret = -1;
-			goto exit;
+			return -1;
 		}
 	}
 
-	ret = transferred;
-
-	exit:
-
-	return (ret);
+	return transferred;
 }
 
 ssize_t readMem(struct file *filp, char *buf, size_t count, loff_t *f_pos)
@@ -371,12 +366,12 @@ ssize_t readMem(struct file *filp, char *buf, size_t count, loff_t *f_pos)
 	unsigned short int transfer_size;
 	ssize_t transferred = 0;
 	unsigned long src_addr, trgt_addr;
-	int ret = 0;
 	
 	struct mark1_mem * mem_to_read = &(((struct mark1_device *) filp->private_data)->data.mem);
 
 	if(count%2 != 0){
 		 printk("%s: MARK1 read: Transfer must be 16bits aligned.\n",gDrvrName);
+
 		 return -1;
 	}
 
@@ -388,6 +383,7 @@ ssize_t readMem(struct file *filp, char *buf, size_t count, loff_t *f_pos)
 
 	if(mem_to_read->dma_buf == NULL){
 		printk("failed to allocate DMA buffer \n");
+
 		return -1;
 	}
 
@@ -398,12 +394,12 @@ ssize_t readMem(struct file *filp, char *buf, size_t count, loff_t *f_pos)
 		if(edma_memtomemcpy(transfer_size, src_addr, trgt_addr,  mem_to_read->dma_chan) < 0){
 		
 			printk("%s: MARK1 read: Failed to trigger EDMA transfer.\n",gDrvrName);
-			goto exit;
+
+			return -1;
 		}	
 
 		if (copy_to_user(&buf[transferred], mem_to_read->dma_buf, transfer_size)){
-			ret = -1;
-			goto exit;
+			return -1;
 		}
 
 		src_addr += transfer_size;
@@ -416,10 +412,7 @@ ssize_t readMem(struct file *filp, char *buf, size_t count, loff_t *f_pos)
 		}
 	}
 
-	ret = transferred;
-	exit:
-
-	return ret;
+	return transferred;
 }
 
 static int mark1_dm_open(struct inode *inode, struct file *filp)
@@ -431,11 +424,13 @@ static int mark1_dm_open(struct inode *inode, struct file *filp)
 	
 	if(dev == NULL){
 		printk("Failed to retrieve mark1 structure !\n");
+
 		return -1;
 	}
 
 	if(dev->opened == 1){
 		printk("%s: module already opened\n", gDrvrName);
+
 		return 0;
 	}
 
@@ -560,14 +555,16 @@ static int mark1_dm_init(void)
 
 	if (result < 0) {
 		printk(KERN_ALERT "Registering char device failed with %d\n", gDrvrMajor);
+
 		return result;
 	}
 
 	mark1_devices = kmalloc(2 * sizeof(struct mark1_device), GFP_KERNEL);
 
 	if (! mark1_devices) {
-		result = -ENOMEM;
-		goto fail;  /* Make this more graceful */
+		mark1_dm_exit();
+
+		return -ENOMEM;
 	}
 
 	mark1_class = class_create(THIS_MODULE,DEVICE_NAME);
@@ -585,7 +582,9 @@ static int mark1_dm_init(void)
 
 	if(i2c_adap == NULL){
 		printk("Cannot get adapter 1 \n");
-		goto fail;
+		mark1_dm_exit();
+
+		return -1;
 	}
 
 	progDev->i2c_io = i2c_new_device(i2c_adap , &io_exp_info);
@@ -593,9 +592,10 @@ static int mark1_dm_init(void)
 	
 	if(prog_device == NULL){
 		class_destroy(mark1_class);
-		result = -ENOMEM;
 		mark1_devices[0].opened = 0;
-		goto fail;
+		mark1_dm_exit();
+
+		return -ENOMEM;;
 	}
 
 	cdev_init(&(mark1_devices[0].cdev), &mark1_dm_ops);
@@ -617,11 +617,6 @@ static int mark1_dm_init(void)
 	init_completion(&dma_comp);
 
 	return 0;
-
-fail:
-	mark1_dm_exit();
-
-	return -1;
 }
 
 int edma_memtomemcpy(int count, unsigned long src_addr, unsigned long trgt_addr, int dma_ch)
