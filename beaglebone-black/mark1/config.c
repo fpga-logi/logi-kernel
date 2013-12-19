@@ -20,15 +20,18 @@
 #define GPIO0_SETDATAOUT *(gpio_regs+1)
 #define GPIO0_CLEARDATAOUT *(gpio_regs)
 
+//I2C
+#define I2_IO_EXP_ADDR	0x70
+
+
+volatile unsigned * gpio_regs;
+
 
 static inline void __delay_cycles(unsigned long cycles){
 	while(cycles != 0){
 		cycles --;	
 	}
 }
-
-volatile unsigned * gpio_regs;
-
 
 static inline void ssiSetClk(void){
 	//gpio_set_value(SSI_CLK, 1);

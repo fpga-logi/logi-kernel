@@ -1,5 +1,5 @@
-#define DEVICE_NAME "mark1"
-#define DEVICE_NAME_MEM "mark1_mem"
+#define DEVICE_NAME "logibone"
+#define DEVICE_NAME_MEM "logibone_mem"
 
 //FPGA
 #define FPGA_BASE_ADDR	 0x01000000
