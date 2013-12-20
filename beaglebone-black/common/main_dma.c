@@ -22,8 +22,8 @@
 #include <linux/of_gpio.h>
 #include <linux/of_i2c.h>
 #include <linux/completion.h>
-#include "../mark1_dma/generic.h"
-#include "../mark1_dma/config.h"
+#include "generic.h"
+#include "config.h"
 
 
 static int dm_open(struct inode *inode, struct file *filp);
@@ -37,7 +37,7 @@ int loadBitFile(struct i2c_client * io_cli, const unsigned char * bitBuffer_user
 
 
 static struct i2c_board_info io_exp_info= {
-	I2C_BOARD_INFO("fpga_ctrl", I2_IO_EXP_ADDR),
+	I2C_BOARD_INFO("fpga_ctrl", I2C_IO_EXP_ADDR),
 };
 
 static struct file_operations dm_ops = {
