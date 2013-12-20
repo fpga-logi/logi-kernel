@@ -20,9 +20,6 @@
 #define GPIO0_SETDATAOUT *(gpio_regs+1)
 #define GPIO0_CLEARDATAOUT *(gpio_regs)
 
-//I2C
-#define I2_IO_EXP_ADDR	0x70
-
 
 volatile unsigned * gpio_regs;
 

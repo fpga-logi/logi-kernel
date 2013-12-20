@@ -1,3 +1,5 @@
+EXTRA_CFLAGS=-I$(PWD)
+
 # If KERNELRELEASE is defined, we've been invoked from the
 # kernel build system and can use its language.
 ifneq ($(KERNELRELEASE),)

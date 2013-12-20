@@ -21,7 +21,6 @@
 #define GPIO3_CLEARDATAOUT *(gpio_regs)
 
 //I2C
-#define I2_IO_EXP_ADDR	0x24
 #define I2C_IO_EXP_CONFIG_REG	0x03
 #define I2C_IO_EXP_IN_REG	0x00
 #define I2C_IO_EXP_OUT_REG	0x01

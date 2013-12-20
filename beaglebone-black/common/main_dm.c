@@ -21,8 +21,8 @@
 #include <linux/of_dma.h>
 #include <linux/of_gpio.h>
 #include <linux/of_i2c.h>
-#include "../mark1_dma/generic.h"
-#include "../mark1_dma/config.h"
+#include "generic.h"
+#include "config.h"
 
 
 static int dm_open(struct inode *inode, struct file *filp);
@@ -33,7 +33,7 @@ static long dm_ioctl(struct file *filp, unsigned int cmd, unsigned long arg);
 
 
 static struct i2c_board_info io_exp_info= {
-	I2C_BOARD_INFO("fpga_ctrl", I2_IO_EXP_ADDR),
+	I2C_BOARD_INFO("fpga_ctrl", I2C_IO_EXP_ADDR),
 };
 
 static struct file_operations dm_ops = {
