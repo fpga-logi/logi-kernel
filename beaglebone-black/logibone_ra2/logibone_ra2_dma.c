@@ -631,7 +631,7 @@ int edma_memtomemcpy(int count, unsigned long src_addr, unsigned long trgt_addr,
 		printk ("edma copy for logibone_fifo failed \n");
 		
 	}
-	while (irqraised1 == 0u) udelay(5);//schedule();
+	while (irqraised1 == 0u) schedule();
 	//irqraised1 = 0u;
 	//irqraised1 = -1 ;
 
