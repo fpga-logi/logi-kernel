@@ -2,8 +2,8 @@
 
 
 
-CC_PREFIX=#fill with the location of toolchain and target triplet
-KERNEL_DIR=#fill with the location of you kernel sources
+CC_PREFIX=$1 #fill with the location of toolchain and target triplet
+KERNEL_DIR=$2 #fill with the location of you kernel sources
 
 
 cd logibone_ra1
