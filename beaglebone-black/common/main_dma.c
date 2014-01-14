@@ -4,7 +4,6 @@
 #include <linux/interrupt.h>
 #include <linux/fs.h>
 #include <linux/slab.h>
-#include <linux/ioctl.h>
 #include <asm/uaccess.h>   /* copy_to_user */
 #include <linux/cdev.h>
 #include <linux/sched.h>
@@ -24,13 +23,14 @@
 #include <linux/completion.h>
 #include "generic.h"
 #include "config.h"
+#include "drvr.h"
+#include "ioctl.h"
 
 
 static int dm_open(struct inode *inode, struct file *filp);
 static int dm_release(struct inode *inode, struct file *filp);
 static ssize_t dm_write(struct file *filp, const char *buf, size_t count, loff_t *f_pos);
 static ssize_t dm_read(struct file *filp, char *buf, size_t count, loff_t *f_pos);
-static long dm_ioctl(struct file *filp, unsigned int cmd, unsigned long arg);
 int edma_memtomemcpy(int count, unsigned long src_addr, unsigned long trgt_addr, int dma_ch);
 static void dma_callback(unsigned lch, u16 ch_status, void *data);
 int loadBitFile(struct i2c_client * io_cli, const unsigned char * bitBuffer_user, unsigned int length);
@@ -47,35 +47,6 @@ static struct file_operations dm_ops = {
 	.unlocked_ioctl = dm_ioctl,
 	.open =   dm_open,
 	.release =  dm_release,
-};
-
-enum drvr_type{
-	prog,
-	mem
-};
-
-struct drvr_prog{
-	struct i2c_client * i2c_io;
-};
-
-
-struct drvr_mem{
-	unsigned short * base_addr;
-	unsigned short * virt_addr;
-	unsigned char * dma_buf;
-	int dma_chan;
-};
-
-union drvr_data{
-	struct drvr_prog prog;
-	struct drvr_mem mem;
-};
-
-struct drvr_device{
-	enum drvr_type type;
-	union drvr_data data;
-	struct cdev cdev;
-	unsigned char opened;
 };
 
 
@@ -298,12 +269,6 @@ static ssize_t dm_read(struct file *filp, char *buf, size_t count, loff_t *f_pos
 	};
 }
 
-static long dm_ioctl(struct file *filp, unsigned int cmd, unsigned long arg){
-	printk("ioctl failed \n");
-
-	return -ENOTTY;
-}
-
 static void dm_exit(void)
 {
 	int i;
@@ -326,6 +291,8 @@ static void dm_exit(void)
 	class_destroy(drvr_class);
 	/* cleanup_module is never called if registering failed */
 	unregister_chrdev_region(devno, 2);
+
+	ioctl_exit();
 }
 
 static int dm_init(void)
@@ -401,9 +368,8 @@ static int dm_init(void)
 	(drvr_devices[1].cdev).ops = &dm_ops;
 	cdev_add(&(drvr_devices[1].cdev), devno, 1);
 	drvr_devices[1].opened = 0;
-	init_completion(&dma_comp);
-
-	return 0;
+	init_completion(&dma_comp);	
+	return ioctl_init();
 }
 
 int edma_memtomemcpy(int count, unsigned long src_addr, unsigned long trgt_addr, int dma_ch)
