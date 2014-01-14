@@ -4,7 +4,6 @@
 #include <linux/interrupt.h>
 #include <linux/fs.h>
 #include <linux/slab.h>
-#include <linux/ioctl.h>
 #include <asm/uaccess.h>   /* copy_to_user */
 #include <linux/cdev.h>
 #include <linux/sched.h>
@@ -23,13 +22,14 @@
 #include <linux/of_i2c.h>
 #include "generic.h"
 #include "config.h"
+#include "drvr.h"
+#include "ioctl.h"
 
 
 static int dm_open(struct inode *inode, struct file *filp);
 static int dm_release(struct inode *inode, struct file *filp);
 static ssize_t dm_write(struct file *filp, const char *buf, size_t count, loff_t *f_pos);
 static ssize_t dm_read(struct file *filp, char *buf, size_t count, loff_t *f_pos);
-static long dm_ioctl(struct file *filp, unsigned int cmd, unsigned long arg);
 
 
 static struct i2c_board_info io_exp_info= {
@@ -43,32 +43,6 @@ static struct file_operations dm_ops = {
     .unlocked_ioctl = dm_ioctl,
     .open =   dm_open,
     .release =  dm_release,
-};
-
-enum drvr_type{
-	prog,
-	mem
-};
-
-struct drvr_prog{
-	struct i2c_client * i2c_io;
-};
-
-struct drvr_mem{
-	unsigned short * base_addr;
-	unsigned short * virt_addr;
-};
-
-union drvr_data{
-	struct drvr_prog prog;
-	struct drvr_mem mem;
-};
-
-struct drvr_device{
-	enum drvr_type type;
-	union drvr_data data;
-	struct cdev cdev;
-	unsigned char opened;
 };
 
 
@@ -194,12 +168,6 @@ static ssize_t dm_read(struct file *filp, char *buf, size_t count, loff_t *f_pos
 	};
 }
 
-static long dm_ioctl(struct file *filp, unsigned int cmd, unsigned long arg){
-	printk("ioctl failed \n");
-
-	return -ENOTTY;
-}
-
 static void dm_exit(void)
 {
 	int i;
@@ -222,6 +190,7 @@ static void dm_exit(void)
 	class_destroy(drvr_class);
 	/* cleanup_module is never called if registering failed */
 	unregister_chrdev_region(devno, 2);
+	ioctl_exit();
 }
 
 static int dm_init(void)
@@ -237,15 +206,17 @@ static int dm_init(void)
         gDrvrMajor = MAJOR(dev);
 
         if (result < 0) {
-                 printk(KERN_ALERT "Registering char device failed with %d\n", gDrvrMajor);
+		printk(KERN_ALERT "Registering char device failed with %d\n", gDrvrMajor);
+
                 return result;
         }
 
         drvr_devices = kmalloc(2 * sizeof(struct drvr_device), GFP_KERNEL);
 
         if (! drvr_devices) {
-                result = -ENOMEM;
-                goto fail;  /* Make this more graceful */
+		dm_exit();
+
+		return -ENOMEM;
         }
 
 	drvr_class = class_create(THIS_MODULE,DEVICE_NAME);
@@ -263,7 +234,9 @@ static int dm_init(void)
 
 	if(i2c_adap == NULL){
 		printk("Cannot get adapter 1 \n");
-		goto fail;
+		dm_exit();
+
+		return -1;
 	}
 
 	progDev->i2c_io = i2c_new_device(i2c_adap , &io_exp_info);
@@ -271,9 +244,10 @@ static int dm_init(void)
 	
 	if(prog_device == NULL){
 		class_destroy(drvr_class);
-   	 	result = -ENOMEM;
 		drvr_devices[0].opened = 0;
-                goto fail;
+		dm_exit();
+
+		return -ENOMEM;
 	}
 
 	cdev_init(&(drvr_devices[0].cdev), &dm_ops);
@@ -293,13 +267,7 @@ static int dm_init(void)
 	cdev_add(&(drvr_devices[1].cdev), devno, 1);
 	drvr_devices[1].opened = 0;
 
-	return 0;
-
-fail:
-        dm_exit();
-
-        return -1;
-
+	return ioctl_init();
 }
 
 static const struct of_device_id drvr_of_match[] = {
