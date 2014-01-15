@@ -33,7 +33,6 @@ static int dm_open(struct inode *inode, struct file *filp);
 static int dm_release(struct inode *inode, struct file *filp);
 static ssize_t dm_write(struct file *filp, const char *buf, size_t count, loff_t *f_pos);
 static ssize_t dm_read(struct file *filp, char *buf, size_t count, loff_t *f_pos);
-static long dm_ioctl(struct file *filp, unsigned int cmd, unsigned long arg);
 int edma_memtomemcpy(int count, unsigned long src_addr, unsigned long trgt_addr, int dma_ch);
 static void dma_callback(unsigned lch, u16 ch_status, void *data);
 int loadBitFile(struct i2c_client * io_cli, const unsigned char * bitBuffer_user, unsigned int length);
