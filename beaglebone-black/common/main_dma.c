@@ -25,6 +25,8 @@
 #include <linux/completion.h>
 #include "generic.h"
 #include "config.h"
+#include "drvr.h"
+#include "ioctl.h"
 
 
 static int dm_open(struct inode *inode, struct file *filp);
@@ -366,6 +368,8 @@ static void dm_exit(void)
 	class_destroy(drvr_class);
 	/* cleanup_module is never called if registering failed */
 	unregister_chrdev_region(devno, 2);
+
+	ioctl_exit();
 }
 
 static int dm_init(void)
@@ -441,9 +445,8 @@ static int dm_init(void)
 	(drvr_devices[1].cdev).ops = &dm_ops;
 	cdev_add(&(drvr_devices[1].cdev), devno, 1);
 	drvr_devices[1].opened = 0;
-	init_completion(&dma_comp);
-
-	return 0;
+	init_completion(&dma_comp);	
+	return ioctl_init();
 }
 
 int edma_memtomemcpy(int count, unsigned long src_addr, unsigned long trgt_addr, int dma_ch)
@@ -484,46 +487,6 @@ int edma_memtomemcpy(int count, unsigned long src_addr, unsigned long trgt_addr,
 	return result;
 }
 
-int edma_memtomemcpy_with_burst(int count, unsigned long src_addr, unsigned long trgt_addr, int dma_ch)
-{
-	int result = 0;
-	unsigned int a_count, b_count ;
-	struct edmacc_param param_set;
-
-	a_count = (count > 32 ) ? 32 : count ;
-	b_count = (count > 32 ) ? count/32 : 1 ;
-	edma_set_src (dma_ch, src_addr, INCR, W16BIT);
-	edma_set_dest (dma_ch, trgt_addr, INCR, W16BIT);
-	//edma_set_src_index (dma_ch, 1, 1); 
-	edma_set_src_index (dma_ch, a_count, 1);
-	//edma_set_dest_index (dma_ch, 1, 1); 
-	edma_set_dest_index (dma_ch, a_count, 1);
-	/* A Sync Transfer Mode */
-	edma_set_transfer_params (dma_ch, a_count, b_count, 1, 1, ASYNC); //one block of one frame of one array of count bytes
-
-	/* Enable the Interrupts on Channel 1 */
-	edma_read_slot (dma_ch, &param_set);
-	param_set.opt |= ITCINTEN;
-	param_set.opt |= TCINTEN;
-	param_set.opt |= EDMA_TCC(EDMA_CHAN_SLOT(dma_ch));
-	edma_write_slot (dma_ch, &param_set);
-	irqraised1 = 0u;
-	result = edma_start(dma_ch);
-	if (result != 0) {
-		printk ("edma copy for logibone_fifo failed \n");
-		
-	}
-	wait_for_completion(&dma_comp);
-	
-
-	/* Check the status of the completed transfer */
-	if (irqraised1 < 0) {
-		printk ("edma copy for logibone_fifo: Event Miss Occured!!!\n");
-	}
-	edma_stop(dma_ch);
-	return result;
-}
-
 static void dma_callback(unsigned lch, u16 ch_status, void *data)
 {	
 	switch(ch_status) {
@@ -551,6 +514,7 @@ static const struct of_device_id drvr_of_match[] = {
 MODULE_DEVICE_TABLE(of, drvr_of_match);
 MODULE_LICENSE("Dual BSD/GPL");
 MODULE_AUTHOR("Jonathan Piat <piat.jonathan@gmail.com>");
+MODULE_AUTHOR("Martin Schmitt <test051102@hotmail.com>");
 
 module_init(dm_init);
 module_exit(dm_exit);
