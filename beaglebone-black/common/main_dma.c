@@ -52,35 +52,6 @@ static struct file_operations dm_ops = {
 	.release =  dm_release,
 };
 
-enum drvr_type{
-	prog,
-	mem
-};
-
-struct drvr_prog{
-	struct i2c_client * i2c_io;
-};
-
-
-struct drvr_mem{
-	unsigned short * base_addr;
-	unsigned short * virt_addr;
-	unsigned char * dma_buf;
-	int dma_chan;
-};
-
-union drvr_data{
-	struct drvr_prog prog;
-	struct drvr_mem mem;
-};
-
-struct drvr_device{
-	enum drvr_type type;
-	union drvr_data data;
-	struct cdev cdev;
-	unsigned char opened;
-};
-
 
 dma_addr_t dmaphysbuf = 0;
 dma_addr_t dmapGpmcbuf = FPGA_BASE_ADDR;
@@ -338,12 +309,6 @@ static ssize_t dm_read(struct file *filp, char *buf, size_t count, loff_t *f_pos
 		default:
 			return -1;
 	};
-}
-
-static long dm_ioctl(struct file *filp, unsigned int cmd, unsigned long arg){
-	printk("ioctl failed \n");
-
-	return -ENOTTY;
 }
 
 static void dm_exit(void)
