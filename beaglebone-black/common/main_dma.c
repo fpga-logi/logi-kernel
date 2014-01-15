@@ -5,6 +5,7 @@
 #include <linux/fs.h>
 #include <linux/slab.h>
 #include <linux/ioctl.h>
+#include <linux/time.h>
 #include <asm/uaccess.h>   /* copy_to_user */
 #include <linux/cdev.h>
 #include <linux/sched.h>
@@ -91,6 +92,29 @@ struct drvr_device * drvr_devices;
 
 static struct completion dma_comp;
 
+struct timespec start_ts, end_ts ; //profile timer
+
+
+#define PROFILE
+long elapsed_n_sec,elapsed_s_sec,elapsed_m_time,elapsed_u_time;
+
+inline void start_profile(){
+	getnstimeofday(&start_ts);
+}
+
+inline void stop_profile(){
+	getnstimeofday(&end_ts);
+}
+
+inline void compute_bandwidth(const unsigned int nb_byte){
+	elapsed_s_sec=end_ts.tv_sec-start_ts.tv_sec;
+        elapsed_n_sec=end_ts.tv_nsec-start_ts.tv_nsec;
+        elapsed_u_time=(elapsed_s_sec)*1000000+(elapsed_n_sec/1000);    
+        printk("Time in Microsecond=%ld \n",elapsed_u_time);
+        printk("Bandwidth=====%d KB/Sec \n",(nb_byte*1000)/elapsed_u_time );
+
+}
+
 
 ssize_t writeMem(struct file *filp, const char *buf, size_t count, loff_t *f_pos)
 {
@@ -125,11 +149,19 @@ ssize_t writeMem(struct file *filp, const char *buf, size_t count, loff_t *f_pos
 	}
 
 	while(transferred < count){
+#ifdef PROFILE
+		printk("Write \n");
+		start_profile();
+#endif		
 		if(edma_memtomemcpy(transfer_size, src_addr , trgt_addr,  mem_to_write->dma_chan) < 0){
 			printk("%s: write: Failed to trigger EDMA transfer.\n",DEVICE_NAME);
 
 			return -1;
 		}
+#ifdef PROFILE
+		stop_profile();
+		compute_bandwidth(transfer_size);
+#endif
 
 		trgt_addr += transfer_size;
 		transferred += transfer_size;
@@ -178,12 +210,20 @@ ssize_t readMem(struct file *filp, char *buf, size_t count, loff_t *f_pos)
 	trgt_addr = (unsigned long) dmaphysbuf;
 
 	while(transferred < count){
+#ifdef PROFILE
+		printk("Read \n");
+		start_profile();
+#endif
 		if(edma_memtomemcpy(transfer_size, src_addr, trgt_addr,  mem_to_read->dma_chan) < 0){
 		
 			printk("%s: read: Failed to trigger EDMA transfer.\n",DEVICE_NAME);
 
 			return -1;
-		}	
+		}
+#ifdef PROFILE
+		stop_profile();
+		compute_bandwidth(transfer_size);
+#endif	
 
 		if (copy_to_user(&buf[transferred], mem_to_read->dma_buf, transfer_size)){
 			return -1;
@@ -441,6 +481,46 @@ int edma_memtomemcpy(int count, unsigned long src_addr, unsigned long trgt_addr,
 		result = -EAGAIN;
 	}
 
+	return result;
+}
+
+int edma_memtomemcpy_with_burst(int count, unsigned long src_addr, unsigned long trgt_addr, int dma_ch)
+{
+	int result = 0;
+	unsigned int a_count, b_count ;
+	struct edmacc_param param_set;
+
+	a_count = (count > 32 ) ? 32 : count ;
+	b_count = (count > 32 ) ? count/32 : 1 ;
+	edma_set_src (dma_ch, src_addr, INCR, W16BIT);
+	edma_set_dest (dma_ch, trgt_addr, INCR, W16BIT);
+	//edma_set_src_index (dma_ch, 1, 1); 
+	edma_set_src_index (dma_ch, a_count, 1);
+	//edma_set_dest_index (dma_ch, 1, 1); 
+	edma_set_dest_index (dma_ch, a_count, 1);
+	/* A Sync Transfer Mode */
+	edma_set_transfer_params (dma_ch, a_count, b_count, 1, 1, ASYNC); //one block of one frame of one array of count bytes
+
+	/* Enable the Interrupts on Channel 1 */
+	edma_read_slot (dma_ch, &param_set);
+	param_set.opt |= ITCINTEN;
+	param_set.opt |= TCINTEN;
+	param_set.opt |= EDMA_TCC(EDMA_CHAN_SLOT(dma_ch));
+	edma_write_slot (dma_ch, &param_set);
+	irqraised1 = 0u;
+	result = edma_start(dma_ch);
+	if (result != 0) {
+		printk ("edma copy for logibone_fifo failed \n");
+		
+	}
+	wait_for_completion(&dma_comp);
+	
+
+	/* Check the status of the completed transfer */
+	if (irqraised1 < 0) {
+		printk ("edma copy for logibone_fifo: Event Miss Occured!!!\n");
+	}
+	edma_stop(dma_ch);
 	return result;
 }
 
