@@ -376,6 +376,8 @@ int edma_memtomemcpy(int count, unsigned long src_addr, unsigned long trgt_addr,
 {
 	int result = 0;
 	struct edmacc_param param_set;
+	unsigned a_count=(count>32) ? 32 : count;
+	unsigned b_count=(count>32) ? count/32 : 1;
 
 	edma_set_src (dma_ch, src_addr, INCR, W256BIT);
 	edma_set_dest (dma_ch, trgt_addr, INCR, W256BIT);
@@ -437,6 +439,7 @@ static const struct of_device_id drvr_of_match[] = {
 MODULE_DEVICE_TABLE(of, drvr_of_match);
 MODULE_LICENSE("Dual BSD/GPL");
 MODULE_AUTHOR("Jonathan Piat <piat.jonathan@gmail.com>");
+MODULE_AUTHOR("Martin Schmitt <test051102@hotmail.com>");
 
 module_init(dm_init);
 module_exit(dm_exit);
