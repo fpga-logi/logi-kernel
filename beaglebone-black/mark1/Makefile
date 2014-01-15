@@ -4,10 +4,10 @@ EXTRA_CFLAGS=-I$(PWD)
 # kernel build system and can use its language.
 ifneq ($(KERNELRELEASE),)
 	obj-m := mark1_dma.o
-	mark1_dma-objs := ../common/main_dma.o config.o
+	mark1_dma-objs := ../common/main_dma.o config.o ioctl.o
 
 	obj-m += mark1_dm.o
-	mark1_dm-objs := ../common/main_dm.o config.o
+	mark1_dm-objs := ../common/main_dm.o config.o ioctl.o
 # Otherwise we were called directly from the command
 # line; invoke the kernel build system.
 else

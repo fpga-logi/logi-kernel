@@ -437,6 +437,7 @@ static const struct of_device_id drvr_of_match[] = {
 MODULE_DEVICE_TABLE(of, drvr_of_match);
 MODULE_LICENSE("Dual BSD/GPL");
 MODULE_AUTHOR("Jonathan Piat <piat.jonathan@gmail.com>");
+MODULE_AUTHOR("Martin Schmitt <test051102@hotmail.com>");
 
 module_init(dm_init);
 module_exit(dm_exit);
