@@ -67,7 +67,7 @@ static struct completion dma_comp;
 struct timespec start_ts, end_ts ; //profile timer
 
 
-#define PROFILE
+//#define PROFILE //uncoment to enable code profile
 long elapsed_n_sec,elapsed_s_sec,elapsed_m_time,elapsed_u_time;
 
 inline void start_profile(){
