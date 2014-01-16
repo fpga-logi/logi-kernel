@@ -29,6 +29,8 @@
 #include "ioctl.h"
 
 
+#define PROFILE //uncoment to enable code profile
+
 static int dm_open(struct inode *inode, struct file *filp);
 static int dm_release(struct inode *inode, struct file *filp);
 static ssize_t dm_write(struct file *filp, const char *buf, size_t count, loff_t *f_pos);
@@ -67,8 +69,7 @@ static struct completion dma_comp;
 struct timespec start_ts, end_ts ; //profile timer
 
 
-//#define PROFILE //uncoment to enable code profile
-long elapsed_n_sec,elapsed_s_sec,elapsed_m_time,elapsed_u_time;
+#ifdef PROFILE
 
 inline void start_profile(){
 	getnstimeofday(&start_ts);
@@ -79,14 +80,14 @@ inline void stop_profile(){
 }
 
 inline void compute_bandwidth(const unsigned int nb_byte){
-	elapsed_s_sec=end_ts.tv_sec-start_ts.tv_sec;
-        elapsed_n_sec=end_ts.tv_nsec-start_ts.tv_nsec;
-        elapsed_u_time=(elapsed_s_sec)*1000000+(elapsed_n_sec/1000);    
-        printk("Time in Microsecond=%ld \n",elapsed_u_time);
-        printk("Bandwidth=====%d KB/Sec \n",(nb_byte*1000)/elapsed_u_time );
+	struct timespec dt=timespec_sub(end_ts,start_ts);
+	long elapsed_u_time=dt.tv_sec*1000000+dt.tv_nsec/1000;    
 
+	printk("Time=%ld us\n",elapsed_u_time);
+	printk("Bandwidth=%d kBytes/s\n",1000000*(nb_byte>>10)/elapsed_u_time);
 }
 
+#endif
 
 ssize_t writeMem(struct file *filp, const char *buf, size_t count, loff_t *f_pos)
 {
