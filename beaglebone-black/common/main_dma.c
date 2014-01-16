@@ -29,7 +29,7 @@
 #include "ioctl.h"
 
 
-#define PROFILE //uncoment to enable code profile
+//#define PROFILE //uncoment to enable code profile
 
 static int dm_open(struct inode *inode, struct file *filp);
 static int dm_release(struct inode *inode, struct file *filp);
@@ -193,14 +193,15 @@ ssize_t readMem(struct file *filp, char *buf, size_t count, loff_t *f_pos)
 
 			return -1;
 		}
-#ifdef PROFILE
-		stop_profile();
-		compute_bandwidth(transfer_size);
-#endif	
 
 		if (copy_to_user(&buf[transferred], mem_to_read->dma_buf, transfer_size)){
 			return -1;
 		}
+
+#ifdef PROFILE
+		stop_profile();
+		compute_bandwidth(transfer_size);
+#endif
 
 		src_addr += transfer_size;
 		transferred += transfer_size;
