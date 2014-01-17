@@ -47,38 +47,39 @@ static struct file_operations dm_ops = {
 
 
 static unsigned char gDrvrMajor = 0;
-
-unsigned char * readBuffer;
-unsigned char * writeBuffer;
-
-struct device * prog_device;
-struct class * drvr_class;
-struct drvr_device * drvr_devices;
+static unsigned char * readBuffer;
+static unsigned char * writeBuffer;
+static struct device * prog_device;
+static struct class * drvr_class;
+static struct drvr_device * drvr_devices;
 
 
-ssize_t writeMem(struct file *filp, const char *buf, size_t count, loff_t *f_pos)
+static ssize_t writeMem(struct file *filp, const char *buf, size_t count, loff_t *f_pos)
 {
 	unsigned short sBuf;
 	struct drvr_mem * mem_to_write = &(((struct drvr_device *) filp->private_data)->data.mem);
 
-	if(count == 2){
-		if(copy_from_user(&sBuf, buf, count)) return -1;
-		mem_to_write->virt_addr[(*f_pos)/2] = sBuf;
-		return count;	
+	if (count == 2) {
+		if (copy_from_user(&sBuf, buf, count))
+			return -1;
+
+		mem_to_write->virt_addr[(*f_pos) / 2] = sBuf;
+
+		return count;
 	}
 
-	if (copy_from_user((void *) &(mem_to_write->virt_addr[(*f_pos)/2]), buf, count) ) {
-		return -1;		
+	if (copy_from_user((void *) &(mem_to_write->virt_addr[(*f_pos) / 2]), buf, count)) {
+		return -1;
 	}
 
 	return count;
 }
 
-ssize_t readMem(struct file *filp, char *buf, size_t count, loff_t *f_pos)
+static ssize_t readMem(struct file *filp, char *buf, size_t count, loff_t *f_pos)
 {
 	struct drvr_mem * mem_to_read = &(((struct drvr_device *) filp->private_data)->data.mem);
 
-	if (copy_to_user(buf, (void *) &(mem_to_read->virt_addr[(*f_pos)/2]), count) ) {
+	if (copy_to_user(buf, (void *) &(mem_to_read->virt_addr[(*f_pos) / 2]), count)) {
 		return -1;
 	}
 
@@ -87,28 +88,29 @@ ssize_t readMem(struct file *filp, char *buf, size_t count, loff_t *f_pos)
 
 static int dm_open(struct inode *inode, struct file *filp)
 {
-	struct drvr_device * dev = container_of(inode->i_cdev, struct drvr_device, cdev);
+	struct drvr_device
+	* dev = container_of(inode->i_cdev, struct drvr_device, cdev);
 	struct drvr_mem * mem_dev;
 
 	filp->private_data = dev; /* for other methods */
 
-	if(dev == NULL){
+	if (dev == NULL) {
 		printk("%s: Failed to retrieve driver structure !\n", DEVICE_NAME);
 
-		return -1;	
+		return -1;
 	}
 
-	if(dev->opened == 1){
+	if (dev->opened == 1) {
 		printk("%s: module already opened\n", DEVICE_NAME);
 
 		return 0;
 	}
 
-	if(dev->type != prog){
+	if (dev->type != prog) {
 		mem_dev = &((dev->data).mem);
 		request_mem_region((unsigned long) mem_dev->base_addr, FPGA_MEM_SIZE, DEVICE_NAME);
 		mem_dev->virt_addr = ioremap_nocache(((unsigned long) mem_dev->base_addr), FPGA_MEM_SIZE);
-		printk("mem interface opened \n");	
+		printk("mem interface opened \n");
 	}
 
 	dev->opened = 1;
@@ -118,17 +120,19 @@ static int dm_open(struct inode *inode, struct file *filp)
 
 static int dm_release(struct inode *inode, struct file *filp)
 {
-	struct drvr_device * dev = container_of(inode->i_cdev, struct drvr_device, cdev);;
+	struct drvr_device
+	* dev = container_of(inode->i_cdev, struct drvr_device, cdev);;
 
-	if(dev->opened == 0){
+	if (dev->opened == 0) {
 		printk("%s: module already released\n", DEVICE_NAME);
+
 		return 0;
 	}
 
-	if(dev->type == mem){
+	if (dev->type == mem) {
 		iounmap((dev->data.mem).virt_addr);
-		release_mem_region(((unsigned long) (dev->data.mem).base_addr), FPGA_MEM_SIZE );
-		printk("%s: Release: module released\n",DEVICE_NAME);
+		release_mem_region(((unsigned long) (dev->data.mem).base_addr), FPGA_MEM_SIZE);
+		printk("%s: Release: module released\n", DEVICE_NAME);
 	}
 
 	dev->opened = 0;
@@ -140,31 +144,31 @@ static ssize_t dm_write(struct file *filp, const char *buf, size_t count, loff_t
 {
 	struct drvr_device * dev = filp->private_data; /* for other methods */
 
-	switch(dev->type){
-		case prog :		
+	switch (dev->type) {
+		case prog:
 			return loadBitFile((dev->data.prog.i2c_io), buf, count);
 
 		case mem:
 			return writeMem(filp, buf, count, f_pos);
 
 		default:
-			return loadBitFile((dev->data.prog.i2c_io), buf, count);	
-	};	
+			return loadBitFile((dev->data.prog.i2c_io), buf, count);
+	};
 }
 
 static ssize_t dm_read(struct file *filp, char *buf, size_t count, loff_t *f_pos)
 {
 	struct drvr_device * dev = filp->private_data; /* for other methods */
 
-	switch(dev->type){
-		case prog :
+	switch (dev->type) {
+		case prog:
 			return -1;
 
 		case mem:
 			return readMem(filp, buf, count, f_pos);
 
 		default:
-			return -1;	
+			return -1;
 	};
 }
 
@@ -176,8 +180,8 @@ static void dm_exit(void)
 	/* Get rid of our char dev entries */
 	if (drvr_devices) {
 		for (i = 0; i < 2; i++) {
-			if(i == 0){
-				i2c_unregister_device(drvr_devices[i].data.prog.i2c_io);			
+			if (i == 0) {
+				i2c_unregister_device(drvr_devices[i].data.prog.i2c_io);
 			}
 
 			device_destroy(drvr_class, MKDEV(gDrvrMajor, i));
@@ -201,48 +205,48 @@ static int dm_init(void)
 	struct drvr_prog * progDev;
 	struct i2c_adapter *i2c_adap;
 
-        dev_t dev = 0;
+	dev_t dev = 0;
 	result = alloc_chrdev_region(&dev, 0, 2, DEVICE_NAME);
-        gDrvrMajor = MAJOR(dev);
+	gDrvrMajor = MAJOR(dev);
 
-        if (result < 0) {
+	if (result < 0) {
 		printk(KERN_ALERT "Registering char device failed with %d\n", gDrvrMajor);
 
-                return result;
-        }
+		return result;
+	}
 
-        drvr_devices = kmalloc(2 * sizeof(struct drvr_device), GFP_KERNEL);
+	drvr_devices = kmalloc(2 * sizeof(struct drvr_device), GFP_KERNEL);
 
-        if (! drvr_devices) {
+	if (!drvr_devices) {
 		dm_exit();
 
 		return -ENOMEM;
-        }
+	}
 
-	drvr_class = class_create(THIS_MODULE,DEVICE_NAME);
-        memset(drvr_devices, 0, 2 * sizeof(struct drvr_device));
-	
+	drvr_class = class_create(THIS_MODULE, DEVICE_NAME);
+	memset(drvr_devices, 0, 2 * sizeof(struct drvr_device));
+
 	/*Initializing main mdevice for prog*/
 	devno = MKDEV(gDrvrMajor, 0);
 	drvr_devices[0].type = prog;
 	progDev = &(drvr_devices[0].data.prog);
 	prog_device = device_create(drvr_class, NULL, devno, NULL, DEVICE_NAME);	// should create /dev entry for main node
 	drvr_devices[0].opened = 0;
-	
+
 	/*Do the i2c stuff*/
 	i2c_adap = i2c_get_adapter(1); // todo need to check i2c adapter id
 
-	if(i2c_adap == NULL){
+	if (i2c_adap == NULL) {
 		printk("Cannot get adapter 1 \n");
 		dm_exit();
 
 		return -1;
 	}
 
-	progDev->i2c_io = i2c_new_device(i2c_adap , &io_exp_info);
+	progDev->i2c_io = i2c_new_device(i2c_adap, &io_exp_info);
 	i2c_put_adapter(i2c_adap); //don't know what it does, seems to release the adapter ...
-	
-	if(prog_device == NULL){
+
+	if (prog_device == NULL) {
 		class_destroy(drvr_class);
 		drvr_devices[0].opened = 0;
 		dm_exit();
