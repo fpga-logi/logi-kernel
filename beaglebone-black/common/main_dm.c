@@ -47,8 +47,6 @@ static struct file_operations dm_ops = {
 
 
 static unsigned char gDrvrMajor = 0;
-static unsigned char * readBuffer;
-static unsigned char * writeBuffer;
 static struct device * prog_device;
 static struct class * drvr_class;
 static struct drvr_device * drvr_devices;
@@ -90,7 +88,6 @@ static int dm_open(struct inode *inode, struct file *filp)
 {
 	struct drvr_device
 	* dev = container_of(inode->i_cdev, struct drvr_device, cdev);
-	struct drvr_mem * mem_dev;
 
 	filp->private_data = dev; /* for other methods */
 
@@ -107,7 +104,8 @@ static int dm_open(struct inode *inode, struct file *filp)
 	}
 
 	if (dev->type != prog) {
-		mem_dev = &((dev->data).mem);
+		struct drvr_mem* mem_dev = &((dev->data).mem);
+
 		request_mem_region((unsigned long) mem_dev->base_addr, FPGA_MEM_SIZE, DEVICE_NAME);
 		mem_dev->virt_addr = ioremap_nocache(((unsigned long) mem_dev->base_addr), FPGA_MEM_SIZE);
 		printk("mem interface opened \n");
@@ -174,11 +172,12 @@ static ssize_t dm_read(struct file *filp, char *buf, size_t count, loff_t *f_pos
 
 static void dm_exit(void)
 {
-	int i;
 	dev_t devno = MKDEV(gDrvrMajor, 0);
 
 	/* Get rid of our char dev entries */
 	if (drvr_devices) {
+		int i;
+
 		for (i = 0; i < 2; i++) {
 			if (i == 0) {
 				i2c_unregister_device(drvr_devices[i].data.prog.i2c_io);

@@ -108,7 +108,7 @@ static inline unsigned char i2c_get_pin_ex(struct i2c_client * io_cli, unsigned 
 
 int loadBitFile(struct i2c_client * io_cli, const unsigned char * bitBuffer_user, const unsigned int length)
 {
-	unsigned char cfg = 1;
+	int iCfg;
 	unsigned char i2c_test;
 	unsigned long int i;
 	unsigned long int timer = 0;
@@ -126,17 +126,17 @@ int loadBitFile(struct i2c_client * io_cli, const unsigned char * bitBuffer_user
 		return -ENOTTY;
 	}
 
-	cfg = gpio_request(SSI_CLK, "ssi_clk");
+	iCfg = gpio_request(SSI_CLK, "ssi_clk");
 
-	if (cfg < 0) {
+	if (iCfg < 0) {
 		printk("Failed to take control over ssi_clk pin \n");
 
 		return -ENOTTY;
 	}
 
-	cfg = gpio_request(SSI_DATA, "ssi_data");
+	iCfg = gpio_request(SSI_DATA, "ssi_data");
 
-	if (cfg < 0) {
+	if (iCfg < 0) {
 		printk("Failed to take control over ssi_data pin \n");
 
 		return -ENOTTY;
