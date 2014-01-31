@@ -19,7 +19,6 @@
 #include <linux/of_platform.h>
 #include <linux/of_dma.h>
 #include <linux/of_gpio.h>
-#include <linux/of_i2c.h>
 #include "generic.h"
 #include "config.h"
 #include "drvr.h"
