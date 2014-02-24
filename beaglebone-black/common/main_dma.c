@@ -21,7 +21,6 @@
 #include <linux/of_platform.h>
 #include <linux/of_dma.h>
 #include <linux/of_gpio.h>
-#include <linux/of_i2c.h>
 #include <linux/completion.h>
 #include "generic.h"
 #include "config.h"
@@ -29,13 +28,14 @@
 #include "ioctl.h"
 
 
+//#define PROFILE //uncoment to enable code profile
+
 static int dm_open(struct inode *inode, struct file *filp);
 static int dm_release(struct inode *inode, struct file *filp);
 static ssize_t dm_write(struct file *filp, const char *buf, size_t count, loff_t *f_pos);
 static ssize_t dm_read(struct file *filp, char *buf, size_t count, loff_t *f_pos);
-int edma_memtomemcpy(int count, unsigned long src_addr, unsigned long trgt_addr, int dma_ch);
+static int edma_memtomemcpy(int count, unsigned long src_addr, unsigned long trgt_addr, int dma_ch);
 static void dma_callback(unsigned lch, u16 ch_status, void *data);
-int loadBitFile(struct i2c_client * io_cli, const unsigned char * bitBuffer_user, unsigned int length);
 
 
 static struct i2c_board_info io_exp_info= {
@@ -52,84 +52,82 @@ static struct file_operations dm_ops = {
 };
 
 
-dma_addr_t dmaphysbuf = 0;
-dma_addr_t dmapGpmcbuf = FPGA_BASE_ADDR;
+static dma_addr_t dmaphysbuf = 0;
 static volatile int irqraised1 = 0;
-
 static unsigned char gDrvrMajor = 0;
-
-struct device * prog_device;
-struct class * drvr_class;
-struct drvr_device * drvr_devices;
-
+static struct device * prog_device;
+static struct class * drvr_class;
+static struct drvr_device * drvr_devices;
 static struct completion dma_comp;
 
-struct timespec start_ts, end_ts ; //profile timer
 
+#ifdef PROFILE
 
-//#define PROFILE //uncoment to enable code profile
-long elapsed_n_sec,elapsed_s_sec,elapsed_m_time,elapsed_u_time;
+static struct timespec start_ts, end_ts ; //profile timer
 
-inline void start_profile(){
+inline void start_profile() {
 	getnstimeofday(&start_ts);
 }
 
-inline void stop_profile(){
+inline void stop_profile() {
 	getnstimeofday(&end_ts);
 }
 
-inline void compute_bandwidth(const unsigned int nb_byte){
-	elapsed_s_sec=end_ts.tv_sec-start_ts.tv_sec;
-        elapsed_n_sec=end_ts.tv_nsec-start_ts.tv_nsec;
-        elapsed_u_time=(elapsed_s_sec)*1000000+(elapsed_n_sec/1000);    
-        printk("Time in Microsecond=%ld \n",elapsed_u_time);
-        printk("Bandwidth=====%d KB/Sec \n",(nb_byte*1000)/elapsed_u_time );
+inline void compute_bandwidth(const unsigned int nb_byte) {
+	struct timespec dt=timespec_sub(end_ts,start_ts);
+	long elapsed_u_time=dt.tv_sec*1000000+dt.tv_nsec/1000;
 
+	printk("Time=%ld us\n",elapsed_u_time);
+	printk("Bandwidth=%d kBytes/s\n",1000000*(nb_byte>>10)/elapsed_u_time);
 }
 
+#endif
 
 ssize_t writeMem(struct file *filp, const char *buf, size_t count, loff_t *f_pos)
 {
-	unsigned short int transfer_size ;
+	unsigned short int transfer_size;
 	ssize_t transferred = 0;
 	unsigned long src_addr, trgt_addr;
 	struct drvr_mem * mem_to_write = &(((struct drvr_device *) filp->private_data)->data.mem);
-	
-	if(count%2 != 0){
-		 printk("%s: write: Transfer must be 16bits aligned.\n",DEVICE_NAME);
 
-		 return -1;
+	if (count % 2 != 0) {
+		printk("%s: write: Transfer must be 16bits aligned.\n", DEVICE_NAME);
+
+		return -1;
 	}
 
-	if(count < MAX_DMA_TRANSFER_IN_BYTES){
+	if (count < MAX_DMA_TRANSFER_IN_BYTES) {
 		transfer_size = count;
-	}else{
+	} else {
 		transfer_size = MAX_DMA_TRANSFER_IN_BYTES;
 	}
 
-	if(mem_to_write->dma_buf == NULL){
+	if (mem_to_write->dma_buf == NULL) {
 		printk("failed to allocate DMA buffer \n");
 
 		return -1;
 	}
 
-	trgt_addr = (unsigned long) &(mem_to_write->base_addr[(*f_pos)/2]);
+	trgt_addr = (unsigned long) &(mem_to_write->base_addr[(*f_pos) / 2]);
 	src_addr = (unsigned long) dmaphysbuf;
 
-	if (copy_from_user(mem_to_write->dma_buf, buf, transfer_size) ) {
+	if (copy_from_user(mem_to_write->dma_buf, buf, transfer_size)) {
 		return -1;
 	}
 
-	while(transferred < count){
+	while (transferred < count) {
+
 #ifdef PROFILE
 		printk("Write \n");
 		start_profile();
-#endif		
-		if(edma_memtomemcpy(transfer_size, src_addr , trgt_addr,  mem_to_write->dma_chan) < 0){
-			printk("%s: write: Failed to trigger EDMA transfer.\n",DEVICE_NAME);
+#endif
+
+		if (edma_memtomemcpy(transfer_size, src_addr, trgt_addr, mem_to_write->dma_chan) < 0) {
+			printk("%s: write: Failed to trigger EDMA transfer.\n", DEVICE_NAME);
 
 			return -1;
 		}
+
 #ifdef PROFILE
 		stop_profile();
 		compute_bandwidth(transfer_size);
@@ -138,13 +136,13 @@ ssize_t writeMem(struct file *filp, const char *buf, size_t count, loff_t *f_pos
 		trgt_addr += transfer_size;
 		transferred += transfer_size;
 
-		if((count - transferred) < MAX_DMA_TRANSFER_IN_BYTES){
+		if ((count - transferred) < MAX_DMA_TRANSFER_IN_BYTES) {
 			transfer_size = count - transferred;
-		}else{
+		} else {
 			transfer_size = MAX_DMA_TRANSFER_IN_BYTES;
 		}
 
-		if (copy_from_user(mem_to_write->dma_buf, &buf[transferred], transfer_size) ) {
+		if (copy_from_user(mem_to_write->dma_buf, &buf[transferred], transfer_size)) {
 			return -1;
 		}
 	}
@@ -157,56 +155,59 @@ ssize_t readMem(struct file *filp, char *buf, size_t count, loff_t *f_pos)
 	unsigned short int transfer_size;
 	ssize_t transferred = 0;
 	unsigned long src_addr, trgt_addr;
-	
+
 	struct drvr_mem * mem_to_read = &(((struct drvr_device *) filp->private_data)->data.mem);
 
-	if(count%2 != 0){
-		 printk("%s: read: Transfer must be 16bits aligned.\n",DEVICE_NAME);
+	if (count % 2 != 0) {
+		printk("%s: read: Transfer must be 16bits aligned.\n", DEVICE_NAME);
 
-		 return -1;
+		return -1;
 	}
 
-	if(count < MAX_DMA_TRANSFER_IN_BYTES){
+	if (count < MAX_DMA_TRANSFER_IN_BYTES) {
 		transfer_size = count;
-	}else{
+	} else {
 		transfer_size = MAX_DMA_TRANSFER_IN_BYTES;
 	}
 
-	if(mem_to_read->dma_buf == NULL){
+	if (mem_to_read->dma_buf == NULL) {
 		printk("failed to allocate DMA buffer \n");
 
 		return -1;
 	}
 
-	src_addr = (unsigned long) &(mem_to_read->base_addr[(*f_pos)/2]);
+	src_addr = (unsigned long) &(mem_to_read->base_addr[(*f_pos) / 2]);
 	trgt_addr = (unsigned long) dmaphysbuf;
 
-	while(transferred < count){
+	while (transferred < count) {
+
 #ifdef PROFILE
 		printk("Read \n");
 		start_profile();
 #endif
-		if(edma_memtomemcpy(transfer_size, src_addr, trgt_addr,  mem_to_read->dma_chan) < 0){
-		
-			printk("%s: read: Failed to trigger EDMA transfer.\n",DEVICE_NAME);
+
+		if (edma_memtomemcpy(transfer_size, src_addr, trgt_addr, mem_to_read->dma_chan) < 0) {
+
+			printk("%s: read: Failed to trigger EDMA transfer.\n", DEVICE_NAME);
 
 			return -1;
 		}
+
+		if (copy_to_user(&buf[transferred], mem_to_read->dma_buf, transfer_size)) {
+			return -1;
+		}
+
 #ifdef PROFILE
 		stop_profile();
 		compute_bandwidth(transfer_size);
-#endif	
-
-		if (copy_to_user(&buf[transferred], mem_to_read->dma_buf, transfer_size)){
-			return -1;
-		}
+#endif
 
 		src_addr += transfer_size;
 		transferred += transfer_size;
 
-		if((count - transferred) < MAX_DMA_TRANSFER_IN_BYTES){
+		if ((count - transferred) < MAX_DMA_TRANSFER_IN_BYTES) {
 			transfer_size = (count - transferred);
-		}else{
+		} else {
 			transfer_size = MAX_DMA_TRANSFER_IN_BYTES;
 		}
 	}
@@ -216,33 +217,34 @@ ssize_t readMem(struct file *filp, char *buf, size_t count, loff_t *f_pos)
 
 static int dm_open(struct inode *inode, struct file *filp)
 {
-	struct drvr_device * dev = container_of(inode->i_cdev, struct drvr_device, cdev);
-	struct drvr_mem * mem_dev;
+	struct drvr_device
+	* dev = container_of(inode->i_cdev, struct drvr_device, cdev);
 
 	filp->private_data = dev; /* for other methods */
-	
-	if(dev == NULL){
+
+	if (dev == NULL) {
 		printk("%s: Failed to retrieve driver structure !\n", DEVICE_NAME);
 
 		return -1;
 	}
 
-	if(dev->opened == 1){
+	if (dev->opened == 1) {
 		printk("%s: module already opened\n", DEVICE_NAME);
 
 		return 0;
 	}
 
-	if(dev->type != prog){
-		mem_dev = &((dev->data).mem);
+	if (dev->type != prog) {
+		struct drvr_mem* mem_dev = &((dev->data).mem);
+
 		request_mem_region((unsigned long) mem_dev->base_addr, FPGA_MEM_SIZE, DEVICE_NAME);
 		mem_dev->virt_addr = ioremap_nocache(((unsigned long) mem_dev->base_addr), FPGA_MEM_SIZE);
-		mem_dev->dma_chan = edma_alloc_channel (EDMA_CHANNEL_ANY, dma_callback, NULL, EVENTQ_0);
-		mem_dev->dma_buf = (unsigned char *) dma_alloc_coherent (NULL, MAX_DMA_TRANSFER_IN_BYTES, &dmaphysbuf, 0);
+		mem_dev->dma_chan = edma_alloc_channel(EDMA_CHANNEL_ANY, dma_callback, NULL, EVENTQ_0);
+		mem_dev->dma_buf = (unsigned char *) dma_alloc_coherent(NULL, MAX_DMA_TRANSFER_IN_BYTES, &dmaphysbuf, 0);
 		printk("EDMA channel %d reserved \n", mem_dev->dma_chan);
 
 		if (mem_dev->dma_chan < 0) {
-			printk ("edma_alloc_channel failed for dma_ch, error: %d\n", mem_dev->dma_chan);
+			printk("edma_alloc_channel failed for dma_ch, error: %d\n", mem_dev->dma_chan);
 
 			return -1;
 		}
@@ -257,19 +259,20 @@ static int dm_open(struct inode *inode, struct file *filp)
 
 static int dm_release(struct inode *inode, struct file *filp)
 {
-	struct drvr_device * dev = container_of(inode->i_cdev, struct drvr_device, cdev);
+	struct drvr_device
+	* dev = container_of(inode->i_cdev, struct drvr_device, cdev);
 
-	if(dev->opened == 0){
+	if (dev->opened == 0) {
 		printk("%s: module already released\n", DEVICE_NAME);
 
 		return 0;
 	}
 
-	if(dev->type == mem){
+	if (dev->type == mem) {
 		iounmap((dev->data.mem).virt_addr);
-		release_mem_region(((unsigned long) (dev->data.mem).base_addr), FPGA_MEM_SIZE );
-		printk("%s: Release: module released\n",DEVICE_NAME);
-		dma_free_coherent(NULL,  MAX_DMA_TRANSFER_IN_BYTES, (dev->data.mem).dma_buf, dmaphysbuf);
+		release_mem_region(((unsigned long) (dev->data.mem).base_addr), FPGA_MEM_SIZE);
+		printk("%s: Release: module released\n", DEVICE_NAME);
+		dma_free_coherent(NULL, MAX_DMA_TRANSFER_IN_BYTES, (dev->data.mem).dma_buf, dmaphysbuf);
 		edma_free_channel((dev->data.mem).dma_chan);
 	}
 
@@ -282,8 +285,8 @@ static ssize_t dm_write(struct file *filp, const char *buf, size_t count, loff_t
 {
 	struct drvr_device * dev = filp->private_data; /* for other methods */
 
-	switch(dev->type){
-		case prog :
+	switch (dev->type) {
+		case prog:
 			return loadBitFile((dev->data.prog.i2c_io), buf, count);
 
 		case mem:
@@ -298,8 +301,8 @@ static ssize_t dm_read(struct file *filp, char *buf, size_t count, loff_t *f_pos
 {
 	struct drvr_device * dev = filp->private_data; /* for other methods */
 
-	switch(dev->type){
-		case prog :
+	switch (dev->type) {
+		case prog:
 			return -1;
 
 		case mem:
@@ -312,13 +315,14 @@ static ssize_t dm_read(struct file *filp, char *buf, size_t count, loff_t *f_pos
 
 static void dm_exit(void)
 {
-	int i;
 	dev_t devno = MKDEV(gDrvrMajor, 0);
 
 	/* Get rid of our char dev entries */
 	if (drvr_devices) {
+		int i;
+
 		for (i = 0; i < 2; i++) {
-			if(i == 0){
+			if (i == 0) {
 				i2c_unregister_device(drvr_devices[i].data.prog.i2c_io);
 			}
 
@@ -356,36 +360,36 @@ static int dm_init(void)
 
 	drvr_devices = kmalloc(2 * sizeof(struct drvr_device), GFP_KERNEL);
 
-	if (! drvr_devices) {
+	if (!drvr_devices) {
 		dm_exit();
 
 		return -ENOMEM;
 	}
 
-	drvr_class = class_create(THIS_MODULE,DEVICE_NAME);
+	drvr_class = class_create(THIS_MODULE, DEVICE_NAME);
 	memset(drvr_devices, 0, 2 * sizeof(struct drvr_device));
-	
+
 	/*Initializing main mdevice for prog*/
 	devno = MKDEV(gDrvrMajor, 0);
 	drvr_devices[0].type = prog;
 	progDev = &(drvr_devices[0].data.prog);
 	prog_device = device_create(drvr_class, NULL, devno, NULL, DEVICE_NAME);	// should create /dev entry for main node
 	drvr_devices[0].opened = 0;
-	
+
 	/*Do the i2c stuff*/
 	i2c_adap = i2c_get_adapter(1); // todo need to check i2c adapter id
 
-	if(i2c_adap == NULL){
+	if (i2c_adap == NULL) {
 		printk("Cannot get adapter 1 \n");
 		dm_exit();
 
 		return -1;
 	}
 
-	progDev->i2c_io = i2c_new_device(i2c_adap , &io_exp_info);
+	progDev->i2c_io = i2c_new_device(i2c_adap, &io_exp_info);
 	i2c_put_adapter(i2c_adap); //don't know what it does, seems to release the adapter ...
-	
-	if(prog_device == NULL){
+
+	if (prog_device == NULL) {
 		class_destroy(drvr_class);
 		drvr_devices[0].opened = 0;
 		dm_exit();
@@ -409,41 +413,42 @@ static int dm_init(void)
 	(drvr_devices[1].cdev).ops = &dm_ops;
 	cdev_add(&(drvr_devices[1].cdev), devno, 1);
 	drvr_devices[1].opened = 0;
-	init_completion(&dma_comp);	
+	init_completion(&dma_comp);
+
 	return ioctl_init();
 }
 
-int edma_memtomemcpy(int count, unsigned long src_addr, unsigned long trgt_addr, int dma_ch)
+static int edma_memtomemcpy(int count, unsigned long src_addr, unsigned long trgt_addr, int dma_ch)
 {
 	int result = 0;
 	struct edmacc_param param_set;
 
-	edma_set_src (dma_ch, src_addr, INCR, W256BIT);
-	edma_set_dest (dma_ch, trgt_addr, INCR, W256BIT);
-	edma_set_src_index (dma_ch, 1, 1);
-	edma_set_dest_index (dma_ch, 1, 1);
+	edma_set_src(dma_ch, src_addr, INCR, W256BIT);
+	edma_set_dest(dma_ch, trgt_addr, INCR, W256BIT);
+	edma_set_src_index(dma_ch, 1, 1);
+	edma_set_dest_index(dma_ch, 1, 1);
 	/* A Sync Transfer Mode */
-	edma_set_transfer_params (dma_ch, count, 1, 1, 1, ASYNC); //one block of one frame of one array of count bytes
+	edma_set_transfer_params(dma_ch, count, 1, 1, 1, ASYNC); //one block of one frame of one array of count bytes
 
 	/* Enable the Interrupts on Channel 1 */
-	edma_read_slot (dma_ch, &param_set);
+	edma_read_slot(dma_ch, &param_set);
 	param_set.opt |= ITCINTEN;
 	param_set.opt |= TCINTEN;
 	param_set.opt |= EDMA_TCC(EDMA_CHAN_SLOT(dma_ch));
-	edma_write_slot (dma_ch, &param_set);
+	edma_write_slot(dma_ch, &param_set);
 	irqraised1 = 0u;
 	dma_comp.done = 0;
 	result = edma_start(dma_ch);
 
 	if (result != 0) {
-		printk ("%s: edma copy failed \n", DEVICE_NAME);
+		printk("%s: edma copy failed \n", DEVICE_NAME);
 	}
 
 	wait_for_completion(&dma_comp);
 
 	/* Check the status of the completed transfer */
 	if (irqraised1 < 0) {
-		printk ("%s: edma copy: Event Miss Occured!!!\n", DEVICE_NAME);
+		printk("%s: edma copy: Event Miss Occured!!!\n", DEVICE_NAME);
 		edma_stop(dma_ch);
 		result = -EAGAIN;
 	}
@@ -452,8 +457,8 @@ int edma_memtomemcpy(int count, unsigned long src_addr, unsigned long trgt_addr,
 }
 
 static void dma_callback(unsigned lch, u16 ch_status, void *data)
-{	
-	switch(ch_status) {
+{
+	switch (ch_status) {
 		case DMA_COMPLETE:
 			irqraised1 = 1;
 			break;
