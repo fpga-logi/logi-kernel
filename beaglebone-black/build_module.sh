@@ -4,6 +4,9 @@ BOARD_REV=r1
 
 LINUX_DEV=$1
 
+
+#if problem such as "gcc-linaro-arm-linux-gnueabihf-4.7-2013.04-20130415_linux not found" occurs, locate the actual gcc toolchain
+#and modify the path accordingly. Will automate this in a script later
 CC_PREFIX=${LINUX_DEV}/dl/gcc-linaro-arm-linux-gnueabihf-4.7-2013.04-20130415_linux/bin/arm-linux-gnueabihf-
 KERNEL_DIR=${LINUX_DEV}/KERNEL
 
