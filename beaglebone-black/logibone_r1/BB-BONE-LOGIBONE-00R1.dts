@@ -133,8 +133,8 @@
 				bank-width = <2>;		/* GPMC_CONFIG1_DEVICESIZE(1) */
 
 				/*gpmc,burst-write;*/
-				gpmc,burst-read;
-				gpmc,burst-wrap;
+				/*gpmc,burst-read;*/
+				/*gpmc,burst-wrap;*/
 				gpmc,sync-read;		/* GPMC_CONFIG1_READTYPE_ASYNC */
 				gpmc,sync-write;		/* GPMC_CONFIG1_WRITETYPE_ASYNC */
 				gpmc,clk-activation-ns = <0>;	/* GPMC_CONFIG1_CLKACTIVATIONTIME(2) */

@@ -18,4 +18,4 @@ default:
 endif
 
 clean:
-	rm *.o *.ko *.order *.symvers
+	rm *.o *.ko *.order *.symvers *.mod*
