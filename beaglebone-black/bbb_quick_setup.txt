@@ -1,0 +1,92 @@
+
+
+step 1
+
+Follow instruction at http://elinux.org/BeagleBoardUbuntu to create your sd card image for the beaglebone-black. (the following uses the latest stable 13.10 saucy)
+
+step 2 :
+
+open boot/uEnv.txt and uncomment the line 
+
+#optargs=capemgr.disable_partno=BB-BONELT-HDMI,BB-BONELT-HDMIN,BB-BONE-EMMC-2G
+
+if you want to keep HDMI without audio, you can remove the "BB-BONELT-HDMIN" from this line. Using the logibone disable the use of audio (will be fixed in a later sdk revision).
+
+step 3 :
+
+boot the beaglebone-black and then connect to 192.168.7.2 (if using usb connection otherwise resolve the IP address)
+
+ssh ubuntu@192.168.7.2
+
+
+Using an existing module compiled for the default Ubuntu image
+
+downaload the module and files for your Ubuntu distribution, if you don't find your distribution or the module does not work, contact support@valentfx.com
+
+
+
+Installing the compile infrastructure for the kernel module :
+
+step 1 (On your Linux PC):
+
+clone the linux-dev repository and move to the beaglebone branch :
+
+git clone git://github.com/RobertCNelson/linux-dev.git
+cd linux-dev
+git checkout origin/am33x-v3.8 -b tmp
+
+verify on http://elinux.org/BeagleBoardUbuntu what kernel version your kernel uses and modify version.sh accordingly :
+ex for saucy 13.10 =>  BeagleBone/BeagleBone Black: v3.8.13-bone40 kernel 
+
+KERNEL_REL=3.8
+KERNEL_TAG=${KERNEL_REL}.13
+BUILD=bone40
+
+build the base kernel (may take a few hours depending on your internet connection and PC performances):
+
+./build_kernel.sh
+
+
+step 2 (On your Linux PC):
+
+clone the logi-kernel repository on your computer :
+
+git clone https://github.com/fpga-logi-dev/logi-kernel.git
+
+go into the beaglebone-black folder and run build_module.sh with the linux-dev path as argument. 
+If your board release is different than R1, open the build_module.sh and modify the BOARD_REV variable (ex : BOARD_REV=RA2) before running build_module.
+
+./build_module ~/development/KERNEL/ARM/beaglebone-black/linux-dev-13_10/
+
+
+copy the generated deploy directory onto your beaglebone home directory
+
+
+step 3 (On the beaglebone black): 
+
+connect to the beaglebone black over ssh and install an unpgraded version of dtc, this requires an internet connection for the beaglebone and may take some time:
+
+wget -c https://raw.github.com/RobertCNelson/tools/master/pkgs/dtc.sh
+chmod +x dtc.sh
+./dtc.sh
+
+
+step 4 (On the beaglebone black): go to the copied deploy directory and execute the setup_device_tree_R1.sh script (will load the device tree configuration file and load the kernel module)
+
+step 6 (On the beaglebone black): Try to load the blink_led demo app using the following command:
+
+sudo dd id=blink_led.bit of=/dev/logibone bs=4M
+
+step 7 (On the beaglebone black):
+
+lcone the logi-tools repository :
+git clone https://github.com/fpga-logi-dev/logi-tools.git
+
+Open the logibone_loader folder and execute install.sh as sudo.
+sudo ./install.sh
+
+try to load the blink_led application using logi_loader
+
+sudo logi_loader blink_led.bit
+
+
