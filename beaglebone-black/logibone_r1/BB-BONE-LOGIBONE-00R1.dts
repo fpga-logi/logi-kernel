@@ -76,7 +76,7 @@
 					0x038 0x30	/* gpmc_ad14.gpmc_ad14 MODE0 | INPUT | PULLUP */
 					0x03C 0x30	/* gpmc_ad15.gpmc_ad15 MODE0 | INPUT | PULLUP */
 					0x080 0x08	/* gpmc_cscn1.gpmc_cscn1 MODE0 | OUTPUT */
-					0x08C 0x28	/* gpmc_clk.gpmc_clk MODE0 | INPUT */
+					0x08C 0x28	/* gpmc_clk.gpmc_clk MODE0 | OUTPUT */
 					0x090 0x08	/* gpmc_advn_ale.gpmc_advn_ale MODE0 | OUTPUT */
 					0x094 0x08	/* gpmc_oen_ren.gpmc_oen_ren MODE0 | OUTPUT */
 					0x098 0x08	/* gpmc_wen.gpmc_wen MODE0 | OUTPUT */
