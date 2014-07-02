@@ -37,7 +37,7 @@ unsigned char eeprom[sizeEEPROM+100];	// Give a little extra for no good reason
 
 
 
-#define NB_PIN 25
+#define NB_PIN 27
 
 
 
@@ -68,8 +68,10 @@ int logibone_mux_tab [NB_PIN][3] = {
 	{8, 9,0xC008},
 	{9, 12,0xC008},
 
-	{9, 31,0xC037},
-	{9, 30,0xC037}
+	{9, 28,0xC013},
+	{9, 29,0xC033},
+	{9, 30,0xC013},
+        {9, 31,0xC013}
 };
 
 
