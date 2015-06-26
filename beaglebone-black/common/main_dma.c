@@ -90,13 +90,15 @@ ssize_t writeMem(struct file *filp, const char *buf, size_t count, loff_t *f_pos
 	ssize_t transferred = 0;
 	unsigned long src_addr, trgt_addr;
 	struct drvr_mem * mem_to_write = &(((struct drvr_device *) filp->private_data)->data.mem);
-/*
+
+#ifdef USE_WORD_ADDRESSING
 	if (count % 2 != 0) {
 		printk("%s: write: Transfer must be 16bits aligned.\n", DEVICE_NAME);
 
 		return -1;
 	}
-*/
+#endif
+
 	if (count < MAX_DMA_TRANSFER_IN_BYTES) {
 		transfer_size = count;
 	} else {
@@ -109,7 +111,12 @@ ssize_t writeMem(struct file *filp, const char *buf, size_t count, loff_t *f_pos
 		return -1;
 	}
 
+#ifdef USE_WORD_ADDRESSING
+	trgt_addr = (unsigned long) &(mem_to_write->base_addr[(*f_pos) / 2]);
+#else
 	trgt_addr = (unsigned long) &(mem_to_write->base_addr[(*f_pos)]);
+#endif
+
 	src_addr = (unsigned long) dmaphysbuf;
 
 	if (copy_from_user(mem_to_write->dma_buf, buf, transfer_size)) {
@@ -158,13 +165,15 @@ ssize_t readMem(struct file *filp, char *buf, size_t count, loff_t *f_pos)
 	unsigned long src_addr, trgt_addr;
 
 	struct drvr_mem * mem_to_read = &(((struct drvr_device *) filp->private_data)->data.mem);
-/*
+
+#ifdef USE_WORD_ADDRESSING
 	if (count % 2 != 0) {
 		printk("%s: read: Transfer must be 16bits aligned.\n", DEVICE_NAME);
 
 		return -1;
 	}
-*/
+#endif
+
 	if (count < MAX_DMA_TRANSFER_IN_BYTES) {
 		transfer_size = count;
 	} else {
@@ -177,7 +186,12 @@ ssize_t readMem(struct file *filp, char *buf, size_t count, loff_t *f_pos)
 		return -1;
 	}
 
+#ifdef USE_WORD_ADDRESSING
+	src_addr = (unsigned long) &(mem_to_read->base_addr[(*f_pos) / 2]);
+#else
 	src_addr = (unsigned long) &(mem_to_read->base_addr[(*f_pos)]);
+#endif
+
 	trgt_addr = (unsigned long) dmaphysbuf;
 
 	while (transferred < count) {
