@@ -85,7 +85,8 @@ static ssize_t readMem(struct file *filp, char *buf, size_t count, loff_t *f_pos
 
 static int dm_open(struct inode *inode, struct file *filp)
 {
-	struct drvr_device* dev = container_of(inode->i_cdev, struct drvr_device, cdev);
+	struct drvr_device
+	* dev = container_of(inode->i_cdev, struct drvr_device, cdev);
 
 	filp->private_data = dev; /* for other methods */
 
@@ -95,34 +96,43 @@ static int dm_open(struct inode *inode, struct file *filp)
 		return -1;
 	}
 
-	if (dev->opened != 1) {
-		if (dev->type != prog) {
-			struct drvr_mem* mem_dev = &((dev->data).mem);
+	if (dev->opened == 1) {
+		printk("%s: module already opened\n", DEVICE_NAME);
 
-			request_mem_region((unsigned long) mem_dev->base_addr, FPGA_MEM_SIZE, DEVICE_NAME);
-			mem_dev->virt_addr = ioremap_nocache(((unsigned long) mem_dev->base_addr), FPGA_MEM_SIZE);
-			printk("mem interface opened \n");
-		}
-
-		dev->opened = 1;
+		return 0;
 	}
+
+	if (dev->type != prog) {
+		struct drvr_mem* mem_dev = &((dev->data).mem);
+
+		request_mem_region((unsigned long) mem_dev->base_addr, FPGA_MEM_SIZE, DEVICE_NAME);
+		mem_dev->virt_addr = ioremap_nocache(((unsigned long) mem_dev->base_addr), FPGA_MEM_SIZE);
+		printk("mem interface opened \n");
+	}
+
+	dev->opened = 1;
 
 	return 0;
 }
 
 static int dm_release(struct inode *inode, struct file *filp)
 {
-	struct drvr_device* dev = container_of(inode->i_cdev, struct drvr_device, cdev);;
+	struct drvr_device
+	* dev = container_of(inode->i_cdev, struct drvr_device, cdev);;
 
-	if (dev->opened != 0) {
-		if (dev->type == mem) {
-			iounmap((dev->data.mem).virt_addr);
-			release_mem_region(((unsigned long) (dev->data.mem).base_addr), FPGA_MEM_SIZE);
-			printk("%s: Release: module released\n", DEVICE_NAME);
-		}
+	if (dev->opened == 0) {
+		printk("%s: module already released\n", DEVICE_NAME);
 
-		dev->opened = 0;
+		return 0;
 	}
+
+	if (dev->type == mem) {
+		iounmap((dev->data.mem).virt_addr);
+		release_mem_region(((unsigned long) (dev->data.mem).base_addr), FPGA_MEM_SIZE);
+		printk("%s: Release: module released\n", DEVICE_NAME);
+	}
+
+	dev->opened = 0;
 
 	return 0;
 }
