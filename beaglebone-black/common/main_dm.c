@@ -36,12 +36,12 @@ static struct i2c_board_info io_exp_info= {
 };
 
 static struct file_operations dm_ops = {
-    .read =   dm_read,
-    .write =  dm_write,
-    .compat_ioctl =  dm_ioctl,
+    .read = dm_read,
+    .write = dm_write,
+    .compat_ioctl = dm_ioctl,
     .unlocked_ioctl = dm_ioctl,
-    .open =   dm_open,
-    .release =  dm_release,
+    .open = dm_open,
+    .release = dm_release,
 };
 
 
@@ -85,8 +85,7 @@ static ssize_t readMem(struct file *filp, char *buf, size_t count, loff_t *f_pos
 
 static int dm_open(struct inode *inode, struct file *filp)
 {
-	struct drvr_device
-	* dev = container_of(inode->i_cdev, struct drvr_device, cdev);
+	struct drvr_device* dev = container_of(inode->i_cdev, struct drvr_device, cdev);
 
 	filp->private_data = dev; /* for other methods */
 
@@ -96,43 +95,34 @@ static int dm_open(struct inode *inode, struct file *filp)
 		return -1;
 	}
 
-	if (dev->opened == 1) {
-		printk("%s: module already opened\n", DEVICE_NAME);
+	if (dev->opened != 1) {
+		if (dev->type != prog) {
+			struct drvr_mem* mem_dev = &((dev->data).mem);
 
-		return 0;
+			request_mem_region((unsigned long) mem_dev->base_addr, FPGA_MEM_SIZE, DEVICE_NAME);
+			mem_dev->virt_addr = ioremap_nocache(((unsigned long) mem_dev->base_addr), FPGA_MEM_SIZE);
+			printk("mem interface opened \n");
+		}
+
+		dev->opened = 1;
 	}
-
-	if (dev->type != prog) {
-		struct drvr_mem* mem_dev = &((dev->data).mem);
-
-		request_mem_region((unsigned long) mem_dev->base_addr, FPGA_MEM_SIZE, DEVICE_NAME);
-		mem_dev->virt_addr = ioremap_nocache(((unsigned long) mem_dev->base_addr), FPGA_MEM_SIZE);
-		printk("mem interface opened \n");
-	}
-
-	dev->opened = 1;
 
 	return 0;
 }
 
 static int dm_release(struct inode *inode, struct file *filp)
 {
-	struct drvr_device
-	* dev = container_of(inode->i_cdev, struct drvr_device, cdev);;
+	struct drvr_device* dev = container_of(inode->i_cdev, struct drvr_device, cdev);;
 
-	if (dev->opened == 0) {
-		printk("%s: module already released\n", DEVICE_NAME);
+	if (dev->opened != 0) {
+		if (dev->type == mem) {
+			iounmap((dev->data.mem).virt_addr);
+			release_mem_region(((unsigned long) (dev->data.mem).base_addr), FPGA_MEM_SIZE);
+			printk("%s: Release: module released\n", DEVICE_NAME);
+		}
 
-		return 0;
+		dev->opened = 0;
 	}
-
-	if (dev->type == mem) {
-		iounmap((dev->data.mem).virt_addr);
-		release_mem_region(((unsigned long) (dev->data.mem).base_addr), FPGA_MEM_SIZE);
-		printk("%s: Release: module released\n", DEVICE_NAME);
-	}
-
-	dev->opened = 0;
 
 	return 0;
 }
@@ -228,11 +218,11 @@ static int dm_init(void)
 	devno = MKDEV(gDrvrMajor, 0);
 	drvr_devices[0].type = prog;
 	progDev = &(drvr_devices[0].data.prog);
-	prog_device = device_create(drvr_class, NULL, devno, NULL, DEVICE_NAME);	// should create /dev entry for main node
+	prog_device = device_create(drvr_class, NULL, devno, NULL, DEVICE_NAME);//should create /dev entry for main node
 	drvr_devices[0].opened = 0;
 
 	/*Do the i2c stuff*/
-	i2c_adap = i2c_get_adapter(1); // todo need to check i2c adapter id
+	i2c_adap = i2c_get_adapter(1);
 
 	if (i2c_adap == NULL) {
 		printk("Cannot get adapter 1 \n");
@@ -242,7 +232,7 @@ static int dm_init(void)
 	}
 
 	progDev->i2c_io = i2c_new_device(i2c_adap, &io_exp_info);
-	i2c_put_adapter(i2c_adap); //don't know what it does, seems to release the adapter ...
+	i2c_put_adapter(i2c_adap);//don't know what it does, seems to release the adapter ...
 
 	if (prog_device == NULL) {
 		class_destroy(drvr_class);

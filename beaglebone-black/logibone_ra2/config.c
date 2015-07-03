@@ -11,7 +11,7 @@
 #define SSI_DONE 3
 #define SSI_PROG 5
 #define SSI_INIT 2
-#define MODE0	0
+#define MODE0 0
 #define MODE1 1
 #define SSI_DELAY 1
 
@@ -21,9 +21,9 @@
 #define GPIO3_CLEARDATAOUT *(gpio_regs)
 
 //I2C
-#define I2C_IO_EXP_CONFIG_REG	0x03
-#define I2C_IO_EXP_IN_REG	0x00
-#define I2C_IO_EXP_OUT_REG	0x01
+#define I2C_IO_EXP_CONFIG_REG 0x03
+#define I2C_IO_EXP_IN_REG 0x00
+#define I2C_IO_EXP_OUT_REG 0x01
 
 
 volatile unsigned * gpio_regs;
@@ -105,7 +105,6 @@ static inline unsigned char i2c_get_pin(struct i2c_client * io_cli, unsigned cha
 	i2c_buffer = I2C_IO_EXP_IN_REG;
 	i2c_master_send(io_cli, &i2c_buffer, 1);
 	i2c_master_recv(io_cli, &i2c_buffer, 1);
-	//printk("reading value %x \n", i2c_buffer);
 
 	return ((i2c_buffer >> pin) & 0x01);
 }
@@ -148,7 +147,7 @@ int loadBitFile(struct i2c_client * io_cli, const unsigned char * bitBuffer_user
 	i2c_buffer[0] = I2C_IO_EXP_CONFIG_REG;
 	i2c_buffer[1] = 0xFF;
 	i2c_buffer[1] &= ~((1 << SSI_PROG) | (1 << MODE1) | (1 << MODE0));
-	i2c_master_send(io_cli, i2c_buffer, 2); // set SSI_PROG, MODE0, MODE1 as output others as inputs
+	i2c_master_send(io_cli, i2c_buffer, 2);//set SSI_PROG, MODE0, MODE1 as output others as inputs
 	i2c_set_pin(io_cli, MODE0, 1);
 	i2c_set_pin(io_cli, MODE1, 1);
 	i2c_set_pin(io_cli, SSI_PROG, 0);
@@ -163,7 +162,7 @@ int loadBitFile(struct i2c_client * io_cli, const unsigned char * bitBuffer_user
 	__delay_cycles(5 * SSI_DELAY);
 
 	while (i2c_get_pin(io_cli, SSI_INIT) > 0 && timer < 200)
-		timer++; // waiting for init pin to go down
+		timer++;//waiting for init pin to go down
 
 	if (timer >= 200) {
 		printk("FPGA did not answer to prog request, init pin not going low \n");
@@ -178,8 +177,8 @@ int loadBitFile(struct i2c_client * io_cli, const unsigned char * bitBuffer_user
 	__delay_cycles(5 * SSI_DELAY);
 	i2c_set_pin(io_cli, SSI_PROG, 1);
 
-	while (i2c_get_pin(io_cli, SSI_INIT) == 0 && timer < 256) { // need to find a better way ...
-		timer++; // waiting for init pin to go up
+	while (i2c_get_pin(io_cli, SSI_INIT) == 0 && timer < 256) {//need to find a better way ...
+		timer++;//waiting for init pin to go up
 	}
 
 	if (timer >= 256) {
@@ -221,7 +220,7 @@ int loadBitFile(struct i2c_client * io_cli, const unsigned char * bitBuffer_user
 
 	i2c_buffer[0] = I2C_IO_EXP_CONFIG_REG;
 	i2c_buffer[1] = 0xDC;
-	i2c_master_send(io_cli, i2c_buffer, 2); // set all unused config pins as input (keeping mode pins and PROG as output)
+	i2c_master_send(io_cli, i2c_buffer, 2);//set all unused config pins as input (keeping mode pins and PROG as output)
 	gpio_direction_input(SSI_CLK);
 	gpio_direction_input(SSI_DATA);
 	gpio_free(SSI_CLK);
