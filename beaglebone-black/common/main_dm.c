@@ -51,7 +51,7 @@ static struct class * drvr_class;
 static struct drvr_device * drvr_devices;
 
 
-static ssize_t writeMem(struct file *filp, const char *buf, size_t count, loff_t *f_pos)
+static inline ssize_t writeMem(struct file *filp, const char *buf, size_t count, loff_t *f_pos)
 {
 	unsigned short sBuf;
 	struct drvr_mem * mem_to_write = &(((struct drvr_device *) filp->private_data)->data.mem);
@@ -72,7 +72,7 @@ static ssize_t writeMem(struct file *filp, const char *buf, size_t count, loff_t
 	return count;
 }
 
-static ssize_t readMem(struct file *filp, char *buf, size_t count, loff_t *f_pos)
+static inline ssize_t readMem(struct file *filp, char *buf, size_t count, loff_t *f_pos)
 {
 	struct drvr_mem * mem_to_read = &(((struct drvr_device *) filp->private_data)->data.mem);
 

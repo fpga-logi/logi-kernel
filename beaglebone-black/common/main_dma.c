@@ -28,8 +28,6 @@
 #include "ioctl.h"
 
 
-//#define PROFILE //uncoment to enable code profile
-
 static int dm_open(struct inode *inode, struct file *filp);
 static int dm_release(struct inode *inode, struct file *filp);
 static ssize_t dm_write(struct file *filp, const char *buf, size_t count, loff_t *f_pos);
@@ -65,15 +63,15 @@ static struct completion dma_comp;
 
 static struct timespec start_ts, end_ts;//profile timer
 
-inline void start_profile() {
+static inline void start_profile() {
 	getnstimeofday(&start_ts);
 }
 
-inline void stop_profile() {
+static inline void stop_profile() {
 	getnstimeofday(&end_ts);
 }
 
-inline void compute_bandwidth(const unsigned int nb_byte) {
+static inline void compute_bandwidth(const unsigned int nb_byte) {
 	struct timespec dt=timespec_sub(end_ts,start_ts);
 	long elapsed_u_time=dt.tv_sec*1000000+dt.tv_nsec/1000;
 
@@ -84,7 +82,7 @@ inline void compute_bandwidth(const unsigned int nb_byte) {
 #endif
 
 
-ssize_t writeMem(struct file *filp, const char *buf, size_t count, loff_t *f_pos)
+static inline ssize_t writeMem(struct file *filp, const char *buf, size_t count, loff_t *f_pos)
 {
 	unsigned short int transfer_size;
 	ssize_t transferred = 0;
@@ -158,7 +156,7 @@ ssize_t writeMem(struct file *filp, const char *buf, size_t count, loff_t *f_pos
 	return transferred;
 }
 
-ssize_t readMem(struct file *filp, char *buf, size_t count, loff_t *f_pos)
+static inline ssize_t readMem(struct file *filp, char *buf, size_t count, loff_t *f_pos)
 {
 	unsigned short int transfer_size;
 	ssize_t transferred = 0;
@@ -433,7 +431,7 @@ static int dm_init(void)
 	return ioctl_init();
 }
 
-static int edma_memtomemcpy(int count, unsigned long src_addr, unsigned long trgt_addr, int dma_ch)
+static inline int edma_memtomemcpy(int count, unsigned long src_addr, unsigned long trgt_addr, int dma_ch)
 {
 	int result = 0;
 	struct edmacc_param param_set;

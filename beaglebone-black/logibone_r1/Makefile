@@ -1,4 +1,7 @@
-EXTRA_CFLAGS=-I$(PWD)
+#The following definitions can be added to EXTRA_CFLAGS using -D<definition> to change the behaviour of certain modules
+#PROFILE: Builds modules including profiling information
+#USE_WORD_ADDRESSING: Enables WORD instead of BYTE addressing
+EXTRA_CFLAGS=-I$(PWD) -O2
 
 # If KERNELRELEASE is defined, we've been invoked from the
 # kernel build system and can use its language.
@@ -18,4 +21,4 @@ default:
 endif
 
 clean:
-	rm *.o *.ko *.order *.symvers *.mod*
+	rm *.o *.ko *.mod* *.order *.symvers *.mod*
