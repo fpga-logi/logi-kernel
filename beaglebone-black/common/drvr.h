@@ -3,6 +3,9 @@
 
 #include <linux/cdev.h>
 
+#define DBG_LOG(fmt, args...) printk(KERN_INFO DEVICE_NAME ": " fmt, ## args)
+
+
 enum drvr_type {
 	prog,
 	mem

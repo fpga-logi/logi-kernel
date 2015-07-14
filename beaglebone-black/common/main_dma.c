@@ -75,8 +75,8 @@ static inline void compute_bandwidth(const unsigned int nb_byte) {
 	struct timespec dt=timespec_sub(end_ts,start_ts);
 	long elapsed_u_time=dt.tv_sec*1000000+dt.tv_nsec/1000;
 
-	printk("Time=%ld us\n",elapsed_u_time);
-	printk("Bandwidth=%d kBytes/s\n",1000000*(nb_byte>>10)/elapsed_u_time);
+	DBG_LOG("Time=%ld us\n",elapsed_u_time);
+	DBG_LOG("Bandwidth=%d kBytes/s\n",1000000*(nb_byte>>10)/elapsed_u_time);
 }
 
 #endif
@@ -91,7 +91,7 @@ static inline ssize_t writeMem(struct file *filp, const char *buf, size_t count,
 
 #ifdef USE_WORD_ADDRESSING
 	if (count % 2 != 0) {
-		printk("%s: write: Transfer must be 16bits aligned.\n", DEVICE_NAME);
+		DBG_LOG("write: Transfer must be 16bits aligned\n");
 
 		return -EFAULT;
 	}
@@ -104,7 +104,7 @@ static inline ssize_t writeMem(struct file *filp, const char *buf, size_t count,
 	}
 
 	if (mem_to_write->dma_buf == NULL) {
-		printk("failed to allocate DMA buffer \n");
+		DBG_LOG("failed to allocate DMA buffer\n");
 
 		return -ENOMEM;
 	}
@@ -125,14 +125,14 @@ static inline ssize_t writeMem(struct file *filp, const char *buf, size_t count,
 		int res;
 
 #ifdef PROFILE
-		printk("Write \n");
+		DBG_LOG("Write\n");
 		start_profile();
 #endif
 
 		res = edma_memtomemcpy(transfer_size, src_addr, trgt_addr, mem_to_write->dma_chan);
 
 		if (res < 0) {
-			printk("%s: write: Failed to trigger EDMA transfer.\n", DEVICE_NAME);
+			DBG_LOG("write: Failed to trigger EDMA transfer\n");
 
 			return res;
 		}
@@ -169,7 +169,7 @@ static inline ssize_t readMem(struct file *filp, char *buf, size_t count, loff_t
 
 #ifdef USE_WORD_ADDRESSING
 	if (count % 2 != 0) {
-		printk("%s: read: Transfer must be 16bits aligned.\n", DEVICE_NAME);
+		DBG_LOG("read: Transfer must be 16bits aligned\n");
 
 		return -EFAULT;
 	}
@@ -182,7 +182,7 @@ static inline ssize_t readMem(struct file *filp, char *buf, size_t count, loff_t
 	}
 
 	if (mem_to_read->dma_buf == NULL) {
-		printk("failed to allocate DMA buffer \n");
+		DBG_LOG("failed to allocate DMA buffer\n");
 
 		return -ENOMEM;
 	}
@@ -199,7 +199,7 @@ static inline ssize_t readMem(struct file *filp, char *buf, size_t count, loff_t
 		int res;
 
 #ifdef PROFILE
-		printk("Read \n");
+		DBG_LOG("Read\n");
 		start_profile();
 #endif
 
@@ -207,9 +207,9 @@ static inline ssize_t readMem(struct file *filp, char *buf, size_t count, loff_t
 
 		if (res < 0) {
 
-			printk("%s: read: Failed to trigger EDMA transfer.\n", DEVICE_NAME);
+			DBG_LOG("read: Failed to trigger EDMA transfer\n");
 
-			return -1;
+			return res;
 		}
 
 		if (copy_to_user(&buf[transferred], mem_to_read->dma_buf, transfer_size)) {
@@ -241,7 +241,7 @@ static int dm_open(struct inode *inode, struct file *filp)
 	filp->private_data = dev; /* for other methods */
 
 	if (dev == NULL) {
-		printk("%s: Failed to retrieve driver structure !\n", DEVICE_NAME);
+		DBG_LOG("Failed to retrieve driver structure!\n");
 
 		return -ENODEV;
 	}
@@ -254,15 +254,15 @@ static int dm_open(struct inode *inode, struct file *filp)
 			mem_dev->virt_addr = ioremap_nocache(((unsigned long) mem_dev->base_addr), FPGA_MEM_SIZE);
 			mem_dev->dma_chan = edma_alloc_channel(EDMA_CHANNEL_ANY, dma_callback, NULL, EVENTQ_0);
 			mem_dev->dma_buf = (unsigned char *) dma_alloc_coherent(NULL, MAX_DMA_TRANSFER_IN_BYTES, &dmaphysbuf, 0);
-			printk("EDMA channel %d reserved \n", mem_dev->dma_chan);
+			DBG_LOG("EDMA channel %d reserved\n", mem_dev->dma_chan);
 
 			if (mem_dev->dma_chan < 0) {
-				printk("edma_alloc_channel failed for dma_ch, error: %d\n", mem_dev->dma_chan);
+				DBG_LOG("edma_alloc_channel failed for dma_ch, error: %d\n", mem_dev->dma_chan);
 
 				return mem_dev->dma_chan;
 			}
 
-			printk("mem interface opened \n");
+			DBG_LOG("mem interface opened\n");
 		}
 
 		dev->opened = 1;
@@ -279,7 +279,7 @@ static int dm_release(struct inode *inode, struct file *filp)
 		if (dev->type == mem) {
 			iounmap((dev->data.mem).virt_addr);
 			release_mem_region(((unsigned long) (dev->data.mem).base_addr), FPGA_MEM_SIZE);
-			printk("%s: Release: module released\n", DEVICE_NAME);
+			DBG_LOG("module released\n");
 			dma_free_coherent(NULL, MAX_DMA_TRANSFER_IN_BYTES, (dev->data.mem).dma_buf, dmaphysbuf);
 			edma_free_channel((dev->data.mem).dma_chan);
 		}
@@ -362,7 +362,7 @@ static int dm_init(void)
 	gDrvrMajor = MAJOR(dev);
 
 	if (result < 0) {
-		printk(KERN_ALERT "Registering char device failed with %d\n", gDrvrMajor);
+		DBG_LOG("Registering char device failed with %d\n", gDrvrMajor);
 
 		return result;
 	}
@@ -389,7 +389,7 @@ static int dm_init(void)
 	i2c_adap = i2c_get_adapter(1);
 
 	if (i2c_adap == NULL) {
-		printk("Cannot get adapter 1 \n");
+		DBG_LOG("Cannot get adapter 1\n");
 		dm_exit();
 
 		return -ENODEV;
@@ -450,14 +450,14 @@ static inline int edma_memtomemcpy(int count, unsigned long src_addr, unsigned l
 	result = edma_start(dma_ch);
 
 	if (result != 0) {
-		printk("%s: edma copy failed \n", DEVICE_NAME);
+		DBG_LOG("edma copy failed\n");
 	}
 
 	wait_for_completion(&dma_comp);
 
 	/* Check the status of the completed transfer */
 	if (irqraised1 < 0) {
-		printk("%s: edma copy: Event Miss Occured!!!\n", DEVICE_NAME);
+		DBG_LOG("edma copy: Event Miss Occured!!!\n");
 		edma_stop(dma_ch);
 		result = -EAGAIN;
 	}

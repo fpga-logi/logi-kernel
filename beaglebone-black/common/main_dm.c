@@ -90,7 +90,7 @@ static int dm_open(struct inode *inode, struct file *filp)
 	filp->private_data = dev; /* for other methods */
 
 	if (dev == NULL) {
-		printk("%s: Failed to retrieve driver structure !\n", DEVICE_NAME);
+		DBG_LOG("Failed to retrieve driver structure !\n");
 
 		return -ENODEV;
 	}
@@ -101,7 +101,7 @@ static int dm_open(struct inode *inode, struct file *filp)
 
 			request_mem_region((unsigned long) mem_dev->base_addr, FPGA_MEM_SIZE, DEVICE_NAME);
 			mem_dev->virt_addr = ioremap_nocache(((unsigned long) mem_dev->base_addr), FPGA_MEM_SIZE);
-			printk("mem interface opened \n");
+			DBG_LOG("mem interface opened\n");
 		}
 
 		dev->opened = 1;
@@ -118,7 +118,7 @@ static int dm_release(struct inode *inode, struct file *filp)
 		if (dev->type == mem) {
 			iounmap((dev->data.mem).virt_addr);
 			release_mem_region(((unsigned long) (dev->data.mem).base_addr), FPGA_MEM_SIZE);
-			printk("%s: Release: module released\n", DEVICE_NAME);
+			DBG_LOG("module released\n");
 		}
 
 		dev->opened = 0;
@@ -198,7 +198,7 @@ static int dm_init(void)
 	gDrvrMajor = MAJOR(dev);
 
 	if (result < 0) {
-		printk(KERN_ALERT "Registering char device failed with %d\n", gDrvrMajor);
+		DBG_LOG("Registering char device failed with %d\n", gDrvrMajor);
 
 		return result;
 	}
@@ -225,7 +225,7 @@ static int dm_init(void)
 	i2c_adap = i2c_get_adapter(1);
 
 	if (i2c_adap == NULL) {
-		printk("Cannot get adapter 1 \n");
+		DBG_LOG("Cannot get adapter 1\n");
 		dm_exit();
 
 		return -ENODEV;

@@ -3,6 +3,8 @@
 #include <linux/i2c.h>
 #include <asm/io.h>
 #include <linux/gpio.h>
+#include "generic.h"
+#include "../common/drvr.h"
 
 
 //SSI
@@ -123,7 +125,7 @@ int loadBitFile(struct i2c_client * io_cli, const unsigned char * bitBuffer_user
 	bitBuffer = kmalloc(length, GFP_KERNEL);
 
 	if (bitBuffer == NULL) {
-		printk("Failed allocate buffer for configuration file \n");
+		DBG_LOG("Failed allocate buffer for configuration file\n");
 
 		return -ENOMEM;
 	}
@@ -134,7 +136,7 @@ int loadBitFile(struct i2c_client * io_cli, const unsigned char * bitBuffer_user
 	res = gpio_request(SSI_CLK, "ssi_clk");
 
 	if (res < 0) {
-		printk("Failed to take control over ssi_clk pin \n");
+		DBG_LOG("Failed to take control over ssi_clk pin\n");
 
 		return res;
 	}
@@ -142,7 +144,7 @@ int loadBitFile(struct i2c_client * io_cli, const unsigned char * bitBuffer_user
 	res = gpio_request(SSI_DATA, "ssi_data");
 
 	if (res < 0) {
-		printk("Failed to take control over ssi_data pin \n");
+		DBG_LOG("Failed to take control over ssi_data pin\n");
 
 		return res;
 	}
@@ -168,7 +170,7 @@ int loadBitFile(struct i2c_client * io_cli, const unsigned char * bitBuffer_user
 		timer++;//waiting for init pin to go down
 
 	if (timer >= 200) {
-		printk("FPGA did not answer to prog request, init pin not going low \n");
+		DBG_LOG("FPGA did not answer to prog request, init pin not going low\n");
 		i2c_set_pin(io_cli, SSI_PROG, 1);
 		gpio_free(SSI_CLK);
 		gpio_free(SSI_DATA);
@@ -185,7 +187,7 @@ int loadBitFile(struct i2c_client * io_cli, const unsigned char * bitBuffer_user
 	}
 
 	if (timer >= 256) {
-		printk("FPGA did not answer to prog request, init pin not going high \n");
+		DBG_LOG("FPGA did not answer to prog request, init pin not going high\n");
 		gpio_free(SSI_CLK);
 		gpio_free(SSI_DATA);
 
@@ -193,14 +195,14 @@ int loadBitFile(struct i2c_client * io_cli, const unsigned char * bitBuffer_user
 	}
 
 	timer = 0;
-	printk("Starting configuration of %d bits \n", length * 8);
+	DBG_LOG("Starting configuration of %d bits\n", length * 8);
 
 	for (i = 0; i < length; i++) {
 		serialConfigWriteByte(bitBuffer[i]);
 		schedule();
 	}
 
-	printk("Waiting for done pin to go high \n");
+	DBG_LOG("Waiting for done pin to go high\n");
 
 	while (timer < 50) {
 		ssiClearClk();
@@ -214,7 +216,7 @@ int loadBitFile(struct i2c_client * io_cli, const unsigned char * bitBuffer_user
 	gpio_set_value(SSI_DATA, 1);
 
 	if (i2c_get_pin(io_cli, SSI_DONE) == 0) {
-		printk("FPGA prog failed, done pin not going high \n");
+		DBG_LOG("FPGA prog failed, done pin not going high\n");
 		gpio_free(SSI_CLK);
 		gpio_free(SSI_DATA);
 
