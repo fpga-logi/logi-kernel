@@ -6,7 +6,7 @@
 #include <linux/slab.h>
 #include <linux/ioctl.h>
 #include <linux/time.h>
-#include <asm/uaccess.h>   /* copy_to_user */
+#include <asm/uaccess.h>
 #include <linux/cdev.h>
 #include <linux/sched.h>
 #include <linux/memory.h>
@@ -93,7 +93,7 @@ static inline ssize_t writeMem(struct file *filp, const char *buf, size_t count,
 	if (count % 2 != 0) {
 		printk("%s: write: Transfer must be 16bits aligned.\n", DEVICE_NAME);
 
-		return -1;
+		return -EFAULT;
 	}
 #endif
 
@@ -106,7 +106,7 @@ static inline ssize_t writeMem(struct file *filp, const char *buf, size_t count,
 	if (mem_to_write->dma_buf == NULL) {
 		printk("failed to allocate DMA buffer \n");
 
-		return -1;
+		return -ENOMEM;
 	}
 
 #ifdef USE_WORD_ADDRESSING
@@ -118,20 +118,23 @@ static inline ssize_t writeMem(struct file *filp, const char *buf, size_t count,
 	src_addr = (unsigned long) dmaphysbuf;
 
 	if (copy_from_user(mem_to_write->dma_buf, buf, transfer_size)) {
-		return -1;
+		return -EFAULT;
 	}
 
 	while (transferred < count) {
+		int res;
 
 #ifdef PROFILE
 		printk("Write \n");
 		start_profile();
 #endif
 
-		if (edma_memtomemcpy(transfer_size, src_addr, trgt_addr, mem_to_write->dma_chan) < 0) {
+		res = edma_memtomemcpy(transfer_size, src_addr, trgt_addr, mem_to_write->dma_chan);
+
+		if (res < 0) {
 			printk("%s: write: Failed to trigger EDMA transfer.\n", DEVICE_NAME);
 
-			return -1;
+			return res;
 		}
 
 #ifdef PROFILE
@@ -149,7 +152,7 @@ static inline ssize_t writeMem(struct file *filp, const char *buf, size_t count,
 		}
 
 		if (copy_from_user(mem_to_write->dma_buf, &buf[transferred], transfer_size)) {
-			return -1;
+			return -EFAULT;
 		}
 	}
 
@@ -168,7 +171,7 @@ static inline ssize_t readMem(struct file *filp, char *buf, size_t count, loff_t
 	if (count % 2 != 0) {
 		printk("%s: read: Transfer must be 16bits aligned.\n", DEVICE_NAME);
 
-		return -1;
+		return -EFAULT;
 	}
 #endif
 
@@ -181,7 +184,7 @@ static inline ssize_t readMem(struct file *filp, char *buf, size_t count, loff_t
 	if (mem_to_read->dma_buf == NULL) {
 		printk("failed to allocate DMA buffer \n");
 
-		return -1;
+		return -ENOMEM;
 	}
 
 #ifdef USE_WORD_ADDRESSING
@@ -193,13 +196,16 @@ static inline ssize_t readMem(struct file *filp, char *buf, size_t count, loff_t
 	trgt_addr = (unsigned long) dmaphysbuf;
 
 	while (transferred < count) {
+		int res;
 
 #ifdef PROFILE
 		printk("Read \n");
 		start_profile();
 #endif
 
-		if (edma_memtomemcpy(transfer_size, src_addr, trgt_addr, mem_to_read->dma_chan) < 0) {
+		res = edma_memtomemcpy(transfer_size, src_addr, trgt_addr, mem_to_read->dma_chan);
+
+		if (res < 0) {
 
 			printk("%s: read: Failed to trigger EDMA transfer.\n", DEVICE_NAME);
 
@@ -207,7 +213,7 @@ static inline ssize_t readMem(struct file *filp, char *buf, size_t count, loff_t
 		}
 
 		if (copy_to_user(&buf[transferred], mem_to_read->dma_buf, transfer_size)) {
-			return -1;
+			return -EFAULT;
 		}
 
 #ifdef PROFILE
@@ -237,7 +243,7 @@ static int dm_open(struct inode *inode, struct file *filp)
 	if (dev == NULL) {
 		printk("%s: Failed to retrieve driver structure !\n", DEVICE_NAME);
 
-		return -1;
+		return -ENODEV;
 	}
 
 	if (dev->opened != 1) {
@@ -253,7 +259,7 @@ static int dm_open(struct inode *inode, struct file *filp)
 			if (mem_dev->dma_chan < 0) {
 				printk("edma_alloc_channel failed for dma_ch, error: %d\n", mem_dev->dma_chan);
 
-				return -1;
+				return mem_dev->dma_chan;
 			}
 
 			printk("mem interface opened \n");
@@ -306,13 +312,13 @@ static ssize_t dm_read(struct file *filp, char *buf, size_t count, loff_t *f_pos
 
 	switch (dev->type) {
 		case prog:
-			return -1;
+			return -EPERM;
 
 		case mem:
 			return readMem(filp, buf, count, f_pos);
 
 		default:
-			return -1;
+			return -EPERM;
 	};
 }
 
@@ -386,7 +392,7 @@ static int dm_init(void)
 		printk("Cannot get adapter 1 \n");
 		dm_exit();
 
-		return -1;
+		return -ENODEV;
 	}
 
 	progDev->i2c_io = i2c_new_device(i2c_adap, &io_exp_info);

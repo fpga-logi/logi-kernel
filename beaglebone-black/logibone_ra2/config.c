@@ -111,7 +111,7 @@ static inline unsigned char i2c_get_pin(struct i2c_client * io_cli, unsigned cha
 
 int loadBitFile(struct i2c_client * io_cli, const unsigned char * bitBuffer_user, const unsigned int length)
 {
-	int iCfg;
+	int res;
 	unsigned long int i;
 	unsigned long int timer = 0;
 	unsigned char * bitBuffer;
@@ -122,26 +122,29 @@ int loadBitFile(struct i2c_client * io_cli, const unsigned char * bitBuffer_user
 
 	bitBuffer = kmalloc(length, GFP_KERNEL);
 
-	if (bitBuffer == NULL || copy_from_user(bitBuffer, bitBuffer_user, length)) {
+	if (bitBuffer == NULL) {
 		printk("Failed allocate buffer for configuration file \n");
 
-		return -ENOTTY;
+		return -ENOMEM;
 	}
 
-	iCfg = gpio_request(SSI_CLK, "ssi_clk");
+	if (copy_from_user(bitBuffer, bitBuffer_user, length))
+		return EFAULT;
 
-	if (iCfg < 0) {
+	res = gpio_request(SSI_CLK, "ssi_clk");
+
+	if (res < 0) {
 		printk("Failed to take control over ssi_clk pin \n");
 
-		return -ENOTTY;
+		return res;
 	}
 
-	iCfg = gpio_request(SSI_DATA, "ssi_data");
+	res = gpio_request(SSI_DATA, "ssi_data");
 
-	if (iCfg < 0) {
+	if (res < 0) {
 		printk("Failed to take control over ssi_data pin \n");
 
-		return -ENOTTY;
+		return res;
 	}
 
 	i2c_buffer[0] = I2C_IO_EXP_CONFIG_REG;
@@ -170,7 +173,7 @@ int loadBitFile(struct i2c_client * io_cli, const unsigned char * bitBuffer_user
 		gpio_free(SSI_CLK);
 		gpio_free(SSI_DATA);
 
-		return -ENOTTY;
+		return -EIO;
 	}
 
 	timer = 0;
@@ -186,7 +189,7 @@ int loadBitFile(struct i2c_client * io_cli, const unsigned char * bitBuffer_user
 		gpio_free(SSI_CLK);
 		gpio_free(SSI_DATA);
 
-		return -ENOTTY;
+		return -EIO;
 	}
 
 	timer = 0;
@@ -215,7 +218,7 @@ int loadBitFile(struct i2c_client * io_cli, const unsigned char * bitBuffer_user
 		gpio_free(SSI_CLK);
 		gpio_free(SSI_DATA);
 
-		return -ENOTTY;
+		return -EIO;
 	}
 
 	i2c_buffer[0] = I2C_IO_EXP_CONFIG_REG;

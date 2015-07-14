@@ -4,7 +4,7 @@
 #include <linux/interrupt.h>
 #include <linux/fs.h>
 #include <linux/slab.h>
-#include <asm/uaccess.h>   /* copy_to_user */
+#include <asm/uaccess.h>
 #include <linux/cdev.h>
 #include <linux/sched.h>
 #include <linux/memory.h>
@@ -58,7 +58,7 @@ static inline ssize_t writeMem(struct file *filp, const char *buf, size_t count,
 
 	if (count == 2) {
 		if (copy_from_user(&sBuf, buf, count))
-			return -1;
+			return -EFAULT;
 
 		mem_to_write->virt_addr[(*f_pos) / 2] = sBuf;
 
@@ -66,7 +66,7 @@ static inline ssize_t writeMem(struct file *filp, const char *buf, size_t count,
 	}
 
 	if (copy_from_user((void *) &(mem_to_write->virt_addr[(*f_pos) / 2]), buf, count)) {
-		return -1;
+		return -EFAULT;
 	}
 
 	return count;
@@ -77,7 +77,7 @@ static inline ssize_t readMem(struct file *filp, char *buf, size_t count, loff_t
 	struct drvr_mem * mem_to_read = &(((struct drvr_device *) filp->private_data)->data.mem);
 
 	if (copy_to_user(buf, (void *) &(mem_to_read->virt_addr[(*f_pos) / 2]), count)) {
-		return -1;
+		return -EFAULT;
 	}
 
 	return count;
@@ -92,7 +92,7 @@ static int dm_open(struct inode *inode, struct file *filp)
 	if (dev == NULL) {
 		printk("%s: Failed to retrieve driver structure !\n", DEVICE_NAME);
 
-		return -1;
+		return -ENODEV;
 	}
 
 	if (dev->opened != 1) {
@@ -149,13 +149,13 @@ static ssize_t dm_read(struct file *filp, char *buf, size_t count, loff_t *f_pos
 
 	switch (dev->type) {
 		case prog:
-			return -1;
+			return -EPERM;
 
 		case mem:
 			return readMem(filp, buf, count, f_pos);
 
 		default:
-			return -1;
+			return -EPERM;
 	};
 }
 
@@ -228,7 +228,7 @@ static int dm_init(void)
 		printk("Cannot get adapter 1 \n");
 		dm_exit();
 
-		return -1;
+		return -ENODEV;
 	}
 
 	progDev->i2c_io = i2c_new_device(i2c_adap, &io_exp_info);
