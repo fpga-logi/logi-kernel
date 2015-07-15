@@ -1,6 +1,5 @@
 #!/bin/sh
 
-
 CAPE_MNGR="$(ls /sys/devices/ | grep bone_capemgr)"
 
 rm /lib/firmware/BB-BONE-LOGIBONE-00R1.dtbo
