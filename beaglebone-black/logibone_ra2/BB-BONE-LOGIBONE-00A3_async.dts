@@ -17,7 +17,7 @@
 
 	/* identification */
 	part-number = "BB-BONE-LOGIBONE";
-	version = "00A2";
+	version = "00A3";
 
 	/* state the resources this cape uses */
 	exclusive-use =
