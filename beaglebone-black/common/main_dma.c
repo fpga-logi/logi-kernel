@@ -103,12 +103,6 @@ static inline ssize_t writeMem(struct file *filp, const char *buf, size_t count,
 		transfer_size = MAX_DMA_TRANSFER_IN_BYTES;
 	}
 
-	if (mem_to_write->dma_buf == NULL) {
-		DBG_LOG("failed to allocate DMA buffer\n");
-
-		return -ENOMEM;
-	}
-
 #ifdef USE_WORD_ADDRESSING
 	trgt_addr = (unsigned long) &(mem_to_write->base_addr[(*f_pos) / 2]);
 #else
@@ -181,12 +175,6 @@ static inline ssize_t readMem(struct file *filp, char *buf, size_t count, loff_t
 		transfer_size = MAX_DMA_TRANSFER_IN_BYTES;
 	}
 
-	if (mem_to_read->dma_buf == NULL) {
-		DBG_LOG("failed to allocate DMA buffer\n");
-
-		return -ENOMEM;
-	}
-
 #ifdef USE_WORD_ADDRESSING
 	src_addr = (unsigned long) &(mem_to_read->base_addr[(*f_pos) / 2]);
 #else
@@ -253,13 +241,20 @@ static int dm_open(struct inode *inode, struct file *filp)
 			request_mem_region((unsigned long) mem_dev->base_addr, FPGA_MEM_SIZE, DEVICE_NAME);
 			mem_dev->virt_addr = ioremap_nocache(((unsigned long) mem_dev->base_addr), FPGA_MEM_SIZE);
 			mem_dev->dma_chan = edma_alloc_channel(EDMA_CHANNEL_ANY, dma_callback, NULL, EVENTQ_0);
-			mem_dev->dma_buf = (unsigned char *) dma_alloc_coherent(NULL, MAX_DMA_TRANSFER_IN_BYTES, &dmaphysbuf, 0);
-			DBG_LOG("EDMA channel %d reserved\n", mem_dev->dma_chan);
 
 			if (mem_dev->dma_chan < 0) {
 				DBG_LOG("edma_alloc_channel failed for dma_ch, error: %d\n", mem_dev->dma_chan);
 
 				return mem_dev->dma_chan;
+			}
+
+			DBG_LOG("EDMA channel %d reserved\n", mem_dev->dma_chan);
+			mem_dev->dma_buf = (unsigned char *) dma_alloc_coherent(NULL, MAX_DMA_TRANSFER_IN_BYTES, &dmaphysbuf, 0);
+
+			if (mem_dev->dma_buf == NULL) {
+				DBG_LOG("failed to allocate DMA buffer\n");
+
+				return -ENOMEM;
 			}
 
 			DBG_LOG("mem interface opened\n");
