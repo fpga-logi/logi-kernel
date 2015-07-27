@@ -1,0 +1,5 @@
+#
+# Beaglebone capes
+#
+
+source "drivers/misc/cape/beaglebone/logibone/Kconfig"
