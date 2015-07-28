@@ -14,4 +14,4 @@ default:
 endif
 
 clean:
-	rm *.o *.ko *.order *.symvers
+	rm *.o *.ko .*.cmd *.order *.symvers

@@ -1,4 +1,4 @@
-EXTRA_CFLAGS=-I$(PWD)
+EXTRA_CFLAGS=-I$(PWD) -Wall -O2
 
 # If KERNELRELEASE is defined, we've been invoked from the
 # kernel build system and can use its language.
@@ -18,4 +18,4 @@ default:
 endif
 
 clean:
-	rm *.o *.ko *.order *.symvers
+	rm *.o *.ko .*.cmd *.order *.symvers
