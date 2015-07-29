@@ -297,7 +297,6 @@ static ssize_t dm_write(struct file *filp, const char *buf, size_t count, loff_t
 static ssize_t dm_read(struct file *filp, char *buf, size_t count, loff_t *f_pos)
 {
 	return readMem(filp, buf, count, f_pos);
-
 }
 
 static void dm_exit(void)
