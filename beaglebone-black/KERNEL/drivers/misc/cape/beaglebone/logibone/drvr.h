@@ -3,6 +3,7 @@
 
 #include <linux/cdev.h>
 
+#define DBG_LOG(fmt, args...) printk(KERN_INFO DEVICE_NAME ": " fmt, ## args)
 
 struct drvr_mem{
 	unsigned short * base_addr;
