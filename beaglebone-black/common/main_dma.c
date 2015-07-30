@@ -194,7 +194,6 @@ static inline ssize_t readMem(struct file *filp, char *buf, size_t count, loff_t
 		res = edma_memtomemcpy(transfer_size, src_addr, trgt_addr, mem_to_read->dma_chan);
 
 		if (res < 0) {
-
 			DBG_LOG("read: Failed to trigger EDMA transfer\n");
 
 			return res;
