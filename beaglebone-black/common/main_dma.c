@@ -383,24 +383,23 @@ static int dm_init(void)
 	drvr_devices[0].opened = 0;
 
 	/*Do the i2c stuff*/
-	i2c_adap = i2c_get_adapter(1);
+	i2c_adap = i2c_get_adapter(I2C_ADAPTER);
 
 	if (i2c_adap == NULL) {
-		DBG_LOG("Cannot get adapter 1\n");
+		DBG_LOG("Cannot get I2C adapter %i\n", I2C_ADAPTER);
 		dm_exit();
 
 		return -ENODEV;
 	}
 
 	progDev->i2c_io = i2c_new_device(i2c_adap, &io_exp_info);
-	i2c_put_adapter(i2c_adap);//don't know what it does, seems to release the adapter ...
 
 	if (prog_device == NULL) {
 		class_destroy(drvr_class);
 		drvr_devices[0].opened = 0;
 		dm_exit();
 
-		return -ENOMEM;;
+		return -ENOMEM;
 	}
 
 	cdev_init(&(drvr_devices[0].cdev), &dm_ops);
