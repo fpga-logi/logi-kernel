@@ -1,18 +1,14 @@
 #include <linux/init.h>
 #include <linux/module.h>
-#include <linux/pci.h>
-#include <linux/interrupt.h>
 #include <linux/fs.h>
 #include <linux/slab.h>
 #include <asm/uaccess.h>
 #include <linux/cdev.h>
-#include <linux/sched.h>
 #include <linux/memory.h>
 #include <linux/dma-mapping.h>
 #include <linux/edma.h>
 #include <linux/platform_data/edma.h>
 #include <linux/delay.h>
-#include <linux/mutex.h>
 
 //device tree support
 #include <linux/of.h>

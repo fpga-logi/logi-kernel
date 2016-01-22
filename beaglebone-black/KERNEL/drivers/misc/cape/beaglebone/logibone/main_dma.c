@@ -1,20 +1,15 @@
 #include <linux/init.h>
 #include <linux/module.h>
-#include <linux/pci.h>
-#include <linux/interrupt.h>
 #include <linux/fs.h>
 #include <linux/slab.h>
-#include <linux/ioctl.h>
 #include <linux/time.h>
 #include <asm/uaccess.h>
 #include <linux/cdev.h>
-#include <linux/sched.h>
 #include <linux/memory.h>
 #include <linux/dma-mapping.h>
-#include <linux/edma.h>
 #include <linux/platform_data/edma.h>
 #include <linux/delay.h>
-#include <linux/mutex.h>
+#include <linux/version.h>
 
 //device tree support
 #include <linux/of.h>
@@ -26,6 +21,13 @@
 #include "drvr.h"
 #include "ioctl.h"
 
+//Since kernel 3.13 the DMA_xxx macros have been renamed to EDMA_DMA_xxx.
+#if LINUX_VERSION_CODE < KERNEL_VERSION(3,13,0)
+	#define EDMA_DMA_COMPLETE DMA_COMPLETE
+	#define EDMA_DMA_CC_ERROR DMA_CC_ERROR
+	#define EDMA_DMA_TC1_ERROR DMA_TC1_ERROR
+	#define EDMA_DMA_TC2_ERROR DMA_TC2_ERROR
+#endif
 
 //#define PROFILE //uncoment to enable code profile
 
@@ -401,11 +403,11 @@ static inline int edma_memtomemcpy(int count, unsigned long src_addr, unsigned l
 static void dma_callback(unsigned lch, u16 ch_status, void *data)
 {
 	switch (ch_status) {
-		case DMA_COMPLETE:
+		case EDMA_DMA_COMPLETE:
 			irqraised1 = 1;
 			break;
 
-		case DMA_CC_ERROR:
+		case EDMA_DMA_CC_ERROR:
 			irqraised1 = -1;
 			break;
 
