@@ -232,8 +232,19 @@ static int dm_open(struct inode *inode, struct file *filp)
 		if (dev->type != prog) {
 			struct drvr_mem* mem_dev = &((dev->data).mem);
 
-			request_mem_region((unsigned long) mem_dev->base_addr, FPGA_MEM_SIZE, DEVICE_NAME);
+			if (request_mem_region((unsigned long) mem_dev->base_addr, FPGA_MEM_SIZE, DEVICE_NAME)==NULL) {
+				DBG_LOG("Failed to request I/O memory region\n");
+
+				return -ENOMEM;
+			}
+
 			mem_dev->virt_addr = ioremap_nocache(((unsigned long) mem_dev->base_addr), FPGA_MEM_SIZE);
+
+			if (mem_dev->virt_addr == NULL) {
+				DBG_LOG("Failed to remap I/O memory\n");
+
+				return -ENOMEM;
+			}
 
 			result = logi_dma_init(mem_dev, &dmaphysbuf);
 			if (result)
