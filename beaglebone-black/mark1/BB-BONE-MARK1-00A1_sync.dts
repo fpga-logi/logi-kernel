@@ -116,13 +116,10 @@
 			pinctrl-names = "default";
 			pinctrl-0 = <&gpmc_pins>;
 
-
-
-
 			/* chip select ranges */
 			ranges = <1 0 0x01000000 0x1000000>;
 
-			camera{
+			nor {
 				compatible = "mark1";
 				status = "okay";
 				pinctrl-names = "default";
