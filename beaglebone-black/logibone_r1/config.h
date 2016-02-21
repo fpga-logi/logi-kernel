@@ -11,6 +11,7 @@
 	#define I2C_ADAPTER 1
 #endif
 
+#define LOGI_USE_DMAENGINE 0
 
 int loadBitFile(struct i2c_client * io_cli, const unsigned char * bitBuffer_user, const unsigned int length);
 

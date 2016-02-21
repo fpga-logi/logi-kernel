@@ -7,7 +7,7 @@ EXTRA_CFLAGS=-I$(PWD) -Wall -O2
 # kernel build system and can use its language.
 ifneq ($(KERNELRELEASE),)
 	obj-m := logibone_r1_dma.o
-	logibone_r1_dma-objs := ../common/main_dma.o config.o ioctl.o
+	logibone_r1_dma-objs := ../common/main_dma.o ../common/logi_dma.o config.o ioctl.o
 
 	obj-m += logibone_r1_dm.o
 	logibone_r1_dm-objs := ../common/main_dm.o config.o ioctl.o
