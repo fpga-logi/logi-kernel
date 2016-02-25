@@ -1,13 +1,14 @@
 #The following definitions can be added to EXTRA_CFLAGS using -D<definition> to change the behaviour of certain modules
 #PROFILE: Builds modules including profiling information
 #USE_WORD_ADDRESSING: Enables WORD instead of BYTE addressing
+#USE_DMA_ENGINE: Enables Linux DMA Engine API
 EXTRA_CFLAGS=-I$(PWD) -Wall -O2
 
 # If KERNELRELEASE is defined, we've been invoked from the
 # kernel build system and can use its language.
 ifneq ($(KERNELRELEASE),)
 	obj-m := logibone_r1_dma.o
-	logibone_r1_dma-objs := ../common/main_dma.o config.o ioctl.o
+	logibone_r1_dma-objs := ../common/main_dma.o ../common/logi_dma.o config.o ioctl.o
 
 	obj-m += logibone_r1_dm.o
 	logibone_r1_dm-objs := ../common/main_dm.o config.o ioctl.o
@@ -21,4 +22,4 @@ default:
 endif
 
 clean:
-	rm *.o *.ko .*.cmd *.order *.symvers
+	rm *.o *.ko .*.cmd *.order *.symvers ../common/*.o
