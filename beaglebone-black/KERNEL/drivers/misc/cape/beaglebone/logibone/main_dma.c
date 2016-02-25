@@ -6,38 +6,25 @@
 #include <asm/uaccess.h>
 #include <linux/cdev.h>
 #include <linux/memory.h>
-#include <linux/dma-mapping.h>
-#include <linux/platform_data/edma.h>
 #include <linux/delay.h>
-#include <linux/version.h>
 
 //device tree support
 #include <linux/of.h>
 #include <linux/of_platform.h>
 #include <linux/of_dma.h>
 #include <linux/of_gpio.h>
-#include <linux/completion.h>
 #include "generic.h"
 #include "drvr.h"
+#include "logi_dma.h"
 #include "ioctl.h"
 
-//Since kernel 3.13 the DMA_xxx macros have been renamed to EDMA_DMA_xxx.
-#if LINUX_VERSION_CODE < KERNEL_VERSION(3,13,0)
-	#define EDMA_DMA_COMPLETE DMA_COMPLETE
-	#define EDMA_DMA_CC_ERROR DMA_CC_ERROR
-	#define EDMA_DMA_TC1_ERROR DMA_TC1_ERROR
-	#define EDMA_DMA_TC2_ERROR DMA_TC2_ERROR
-#endif
-
 //#define PROFILE //uncoment to enable code profile
+
 
 static int dm_open(struct inode *inode, struct file *filp);
 static int dm_release(struct inode *inode, struct file *filp);
 static ssize_t dm_write(struct file *filp, const char *buf, size_t count, loff_t *f_pos);
 static ssize_t dm_read(struct file *filp, char *buf, size_t count, loff_t *f_pos);
-static int edma_memtomemcpy(int count, unsigned long src_addr, unsigned long trgt_addr, int dma_ch);
-static void dma_callback(unsigned lch, u16 ch_status, void *data);
-
 
 static struct file_operations dm_ops = {
 	.read = dm_read,
@@ -48,14 +35,11 @@ static struct file_operations dm_ops = {
 	.release = dm_release,
 };
 
-
 static dma_addr_t dmaphysbuf = 0;
-static volatile int irqraised1 = 0;
 static unsigned char gDrvrMajor = 0;
 static struct device * prog_device;
 static struct class * drvr_class;
 static struct drvr_device * drvr_devices;
-static struct completion dma_comp;
 
 
 #ifdef PROFILE
@@ -110,12 +94,12 @@ static inline ssize_t writeMem(struct file *filp, const char *buf, size_t count,
 
 	src_addr = (unsigned long) dmaphysbuf;
 
-	if (copy_from_user(mem_to_write->dma_buf, buf, transfer_size)) {
+	if (copy_from_user(mem_to_write->dma.buf, buf, transfer_size)) {
 		return -EFAULT;
 	}
 
 	if(transfer_size <= 256){		
-		memcpy((void *) &(mem_to_write->virt_addr[(*f_pos)]), mem_to_write->dma_buf,transfer_size);
+		memcpy((void *) &(mem_to_write->virt_addr[(*f_pos)]), mem_to_write->dma.buf,transfer_size);
 
 		return transfer_size ;
 	}
@@ -128,8 +112,8 @@ static inline ssize_t writeMem(struct file *filp, const char *buf, size_t count,
 		start_profile();
 #endif
 
-		res = edma_memtomemcpy(transfer_size, src_addr, trgt_addr, mem_to_write->dma_chan);
-
+		res = logi_dma_copy(mem_to_write, trgt_addr, src_addr,
+				    transfer_size);
 		if (res < 0) {
 			DBG_LOG("write: Failed to trigger EDMA transfer\n");
 
@@ -150,7 +134,7 @@ static inline ssize_t writeMem(struct file *filp, const char *buf, size_t count,
 			transfer_size = MAX_DMA_TRANSFER_IN_BYTES;
 		}
 
-		if (copy_from_user(mem_to_write->dma_buf, &buf[transferred], transfer_size)) {
+		if (copy_from_user(mem_to_write->dma.buf, &buf[transferred], transfer_size)) {
 			return -EFAULT;
 		}
 	}
@@ -196,10 +180,10 @@ static inline ssize_t readMem(struct file *filp, char *buf, size_t count, loff_t
 #endif
 
 		if(transfer_size <= 256) {
-			memcpy(mem_to_read->dma_buf, (void *) &(mem_to_read->virt_addr[(*f_pos)+transferred/2]), transfer_size);
+			memcpy(mem_to_read->dma.buf, (void *) &(mem_to_read->virt_addr[(*f_pos)+transferred/2]), transfer_size);
 		}
 		else {
-			int res = edma_memtomemcpy(transfer_size, src_addr, trgt_addr, mem_to_read->dma_chan);
+			int res = logi_dma_copy(mem_to_read, trgt_addr, src_addr, transfer_size);
 
 			if (res < 0) {
 				DBG_LOG("read: Failed to trigger EDMA transfer\n");
@@ -208,7 +192,7 @@ static inline ssize_t readMem(struct file *filp, char *buf, size_t count, loff_t
 			}
 		}
 
-		if (copy_to_user(&buf[transferred], mem_to_read->dma_buf, transfer_size)) {
+		if (copy_to_user(&buf[transferred], mem_to_read->dma.buf, transfer_size)) {
 			return -EFAULT;
 		}
 
@@ -244,25 +228,26 @@ static int dm_open(struct inode *inode, struct file *filp)
 
 	if (dev->opened != 1) {
 		struct drvr_mem* mem_dev = &(dev->data);
+		int result;
 
-		request_mem_region((unsigned long) mem_dev->base_addr, FPGA_MEM_SIZE, DEVICE_NAME);
-		mem_dev->virt_addr = ioremap_nocache(((unsigned long) mem_dev->base_addr), FPGA_MEM_SIZE);
-		mem_dev->dma_chan = edma_alloc_channel(EDMA_CHANNEL_ANY, dma_callback, NULL, EVENTQ_0);
-
-		if (mem_dev->dma_chan < 0) {
-			DBG_LOG("edma_alloc_channel failed for dma_ch, error: %d\n", mem_dev->dma_chan);
-
-			return mem_dev->dma_chan;
-		}
-
-		DBG_LOG("EDMA channel %d reserved\n", mem_dev->dma_chan);
-		mem_dev->dma_buf = (unsigned char *) dma_alloc_coherent(NULL, MAX_DMA_TRANSFER_IN_BYTES, &dmaphysbuf, 0);
-
-		if (mem_dev->dma_buf == NULL) {
-			DBG_LOG("failed to allocate DMA buffer\n");
+		if (request_mem_region((unsigned long) mem_dev->base_addr, FPGA_MEM_SIZE, DEVICE_NAME)==NULL) {
+			DBG_LOG("Failed to request I/O memory region\n");
 
 			return -ENOMEM;
 		}
+
+		mem_dev->virt_addr = ioremap_nocache(((unsigned long) mem_dev->base_addr), FPGA_MEM_SIZE);
+
+		if (mem_dev->virt_addr == NULL) {
+			DBG_LOG("Failed to remap I/O memory\n");
+
+			return -ENOMEM;
+		}
+
+		result = logi_dma_open(mem_dev, &dmaphysbuf);
+
+		if (result != 0)
+			return result;
 
 		DBG_LOG("mem interface opened \n");
 
@@ -274,17 +259,15 @@ static int dm_open(struct inode *inode, struct file *filp)
 
 static int dm_release(struct inode *inode, struct file *filp)
 {
-	struct drvr_device
-	* dev = container_of(inode->i_cdev, struct drvr_device, cdev);
+	struct drvr_device* dev = container_of(inode->i_cdev, struct drvr_device, cdev);
+	struct drvr_mem* mem_dev = &(dev->data);
 
 	if (dev->opened != 0) {
 		iounmap((dev->data).virt_addr);
 		release_mem_region(((unsigned long) (dev->data).base_addr), FPGA_MEM_SIZE);
+		logi_dma_release(mem_dev);
 		DBG_LOG("module released\n");
-		dma_free_coherent(NULL, MAX_DMA_TRANSFER_IN_BYTES, (dev->data).dma_buf, dmaphysbuf);
-		edma_free_channel((dev->data).dma_chan);
 	}
-
 
 	dev->opened = 0;
 
@@ -357,66 +340,9 @@ static int dm_init(void)
 	(drvr_devices[0].cdev).ops = &dm_ops;
 	cdev_add(&(drvr_devices[0].cdev), devno, 1);
 	drvr_devices[0].opened = 0;
-	init_completion(&dma_comp);
+	logi_dma_init();
 
 	return ioctl_init();
-}
-
-static inline int edma_memtomemcpy(int count, unsigned long src_addr, unsigned long trgt_addr, int dma_ch)
-{
-	int result = 0;
-	struct edmacc_param param_set;
-
-	edma_set_src(dma_ch, src_addr, INCR, W256BIT);
-	edma_set_dest(dma_ch, trgt_addr, INCR, W256BIT);
-	edma_set_src_index(dma_ch, 1, 1);
-	edma_set_dest_index(dma_ch, 1, 1);
-	/* A Sync Transfer Mode */
-	edma_set_transfer_params(dma_ch, count, 1, 1, 1, ASYNC);//one block of one frame of one array of count bytes
-
-	/* Enable the Interrupts on Channel 1 */
-	edma_read_slot(dma_ch, &param_set);
-	param_set.opt |= ITCINTEN;
-	param_set.opt |= TCINTEN;
-	param_set.opt |= EDMA_TCC(EDMA_CHAN_SLOT(dma_ch));
-	edma_write_slot(dma_ch, &param_set);
-	irqraised1 = 0u;
-	dma_comp.done = 0;
-	result = edma_start(dma_ch);
-
-	if (result != 0) {
-		DBG_LOG("edma copy failed\n");
-	}
-
-	wait_for_completion(&dma_comp);
-
-	/* Check the status of the completed transfer */
-	if (irqraised1 < 0) {
-		DBG_LOG("edma copy: Event Miss Occured!!!\n");
-		edma_stop(dma_ch);
-		result = -EAGAIN;
-	}
-
-	return result;
-}
-
-static void dma_callback(unsigned lch, u16 ch_status, void *data)
-{
-	switch (ch_status) {
-		case EDMA_DMA_COMPLETE:
-			irqraised1 = 1;
-			break;
-
-		case EDMA_DMA_CC_ERROR:
-			irqraised1 = -1;
-			break;
-
-		default:
-			irqraised1 = -1;
-			break;
-	}
-
-	complete(&dma_comp);
 }
 
 static const struct of_device_id drvr_of_match[] = {

@@ -7,7 +7,6 @@
 #include <linux/cdev.h>
 #include <linux/memory.h>
 #include <linux/delay.h>
-#include <linux/version.h>
 
 //device tree support
 #include <linux/of.h>
@@ -17,15 +16,8 @@
 #include "generic.h"
 #include "config.h"
 #include "drvr.h"
+#include "logi_dma.h"
 #include "ioctl.h"
-
-//Since kernel 3.13 the DMA_xxx macros have been renamed to EDMA_DMA_xxx.
-#if LINUX_VERSION_CODE < KERNEL_VERSION(3,13,0)
-	#define EDMA_DMA_COMPLETE DMA_COMPLETE
-	#define EDMA_DMA_CC_ERROR DMA_CC_ERROR
-	#define EDMA_DMA_TC1_ERROR DMA_TC1_ERROR
-	#define EDMA_DMA_TC2_ERROR DMA_TC2_ERROR
-#endif
 
 
 static int dm_open(struct inode *inode, struct file *filp);
@@ -218,7 +210,6 @@ static inline ssize_t readMem(struct file *filp, char *buf, size_t count, loff_t
 static int dm_open(struct inode *inode, struct file *filp)
 {
 	struct drvr_device* dev = container_of(inode->i_cdev, struct drvr_device, cdev);
-	int result;
 
 	filp->private_data = dev; /* for other methods */
 
@@ -231,6 +222,7 @@ static int dm_open(struct inode *inode, struct file *filp)
 	if (dev->opened != 1) {
 		if (dev->type != prog) {
 			struct drvr_mem* mem_dev = &((dev->data).mem);
+			int result;
 
 			if (request_mem_region((unsigned long) mem_dev->base_addr, FPGA_MEM_SIZE, DEVICE_NAME)==NULL) {
 				DBG_LOG("Failed to request I/O memory region\n");
@@ -246,8 +238,9 @@ static int dm_open(struct inode *inode, struct file *filp)
 				return -ENOMEM;
 			}
 
-			result = logi_dma_init(mem_dev, &dmaphysbuf);
-			if (result)
+			result = logi_dma_open(mem_dev, &dmaphysbuf);
+
+			if (result != 0)
 				return result;
 
 			DBG_LOG("mem interface opened\n");
@@ -409,6 +402,7 @@ static int dm_init(void)
 	(drvr_devices[1].cdev).ops = &dm_ops;
 	cdev_add(&(drvr_devices[1].cdev), devno, 1);
 	drvr_devices[1].opened = 0;
+	logi_dma_init();
 
 	return ioctl_init();
 }

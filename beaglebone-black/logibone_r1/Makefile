@@ -1,6 +1,7 @@
 #The following definitions can be added to EXTRA_CFLAGS using -D<definition> to change the behaviour of certain modules
 #PROFILE: Builds modules including profiling information
 #USE_WORD_ADDRESSING: Enables WORD instead of BYTE addressing
+#USE_DMA_ENGINE: Enables Linux DMA Engine API
 EXTRA_CFLAGS=-I$(PWD) -Wall -O2
 
 # If KERNELRELEASE is defined, we've been invoked from the
@@ -21,4 +22,4 @@ default:
 endif
 
 clean:
-	rm *.o *.ko .*.cmd *.order *.symvers
+	rm *.o *.ko .*.cmd *.order *.symvers ../common/*.o
