@@ -22,4 +22,5 @@ default:
 endif
 
 clean:
-	rm *.o *.ko .*.cmd *.order *.symvers ../common/*.o
+	rm *.o *.ko .*.cmd *.mod.c *.order *.symvers ../common/*.o ../common/.*.cmd
+	rm -rf .tmp_versions

@@ -17,6 +17,6 @@ cp BB-BONE-LOGIBONE-00R1.dtbo /lib/firmware
 #sh -c "echo -6 > ${SLOTS}"
 sh -c "echo BB-BONE-LOGIBONE:00A3 > ${SLOTS}"
 
-cat ${SLOTS} 
+cat ${SLOTS}
 
 insmod logibone_r1_dma.ko

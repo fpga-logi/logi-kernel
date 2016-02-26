@@ -8,7 +8,7 @@ EXTRA_CFLAGS=-I$(PWD) -Wall -O2
 # kernel build system and can use its language.
 ifneq ($(KERNELRELEASE),)
 	obj-m := logibone_ra2_dma.o
-	logibone_ra2_dma-objs := ../common/main_dma.o config.o ioctl.o
+	logibone_ra2_dma-objs := ../common/main_dma.o ../common/logi_dma.o config.o ioctl.o
 
 	obj-m += logibone_ra2_dm.o
 	logibone_ra2_dm-objs := ../common/main_dm.o config.o ioctl.o
@@ -22,4 +22,5 @@ default:
 endif
 
 clean:
-	rm *.o *.ko .*.cmd *.order *.symvers ../common/*.o
+	rm *.o *.ko .*.cmd *.mod.c *.order *.symvers ../common/*.o ../common/.*.cmd
+	rm -rf .tmp_versions
