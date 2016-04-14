@@ -1,4 +1,5 @@
 /*
+ * Kernel 3.8.13
  * optargs=capemgr.disable_partno=BB-BONE-EMMC-2G
  * "arch/arm/boot/dts/am335x-boneblack.dts", find the section starting
  * with "&mmc2 {" and in section change  status = "okay" into "disabled".
@@ -6,8 +7,6 @@
  *           mmc rstn 1
  * in uBoot or in uEnv and then delete
  */
-
-
 
 /dts-v1/;
 /plugin/;
@@ -38,17 +37,19 @@
 		"P8.11",	/* gpmc: gpmc_ad13 */
 		"P8.16",	/* gpmc: gpmc_ad14 */
 		"P8.15",	/* gpmc: gpmc_ad15 */
-		"P9.13",	/* gpmc: gpmc_wpn */
+		"P9.12",	/* gpmc: gpmc_ben1 */
 		"P8.21",	/* gpmc: gpmc_csn1 */
 		"P8.18",	/* gpmc: gpmc_clk */
 		"P8.7",		/* gpmc: gpmc_advn_ale */
 		"P8.8",		/* gpmc: gpmc_oen_ren */
 		"P8.10",	/* gpmc: gpmc_wen */
 		"P8.9",		/* gpmc: gpmc_ben0_cle */
-
+		"P9.28",	/* BB_SPI_SS */
+		"P9.29",	/* BB_SPI_MISO */
+		"P9.30",	/* BB_SPI_MOSI */
+		"P9.31",	/* BB_SPI_SCK */
 		"gpmc",
-		/* the reset pin */
-		"eMMC_RSTn";
+		"eMMC_RSTn";/* the reset pin */ /* uncomment for use under Kernel 3.8.13 */
 
 	#address-cells = <1>;
 	#size-cells = <1>;
@@ -122,8 +123,8 @@
 				pinctrl-names = "default";
 				pinctrl-0 = <&fpga_config_pins>;
 
-				reset = <&rstctl 0 0>;
-				reset-names = "eMMC_RSTn-LOGIBONE";
+				reset = <&rstctl 0 0>; /* uncomment for use under Kernel 3.8.13 */
+				reset-names = "eMMC_RSTn-LOGIBONE"; /* uncomment for use under Kernel 3.8.13 */
 
 				reg = <1 0 0x01000000>;	/*CSn1*/
 				

@@ -2,6 +2,12 @@
 
 CAPE_MNGR="$(ls /sys/devices/ | grep bone_capemgr)"
 
+if [ -z "$CAPE_MNGR" ]; then
+	SLOTS=/sys/devices/platform/bone_capemgr/slots
+else
+	SLOTS=/sys/devices/$CAPE_MNGR/slots
+fi
+
 while getopts ds opt
 do
 	case $opt in
@@ -20,15 +26,16 @@ else
 fi
 
 cp BB-BONE-MARK1-00A1.dtbo /lib/firmware
-sh -c "echo -4 > /sys/devices/"${CAPE_MNGR}"/slots "
-sh -c "echo -5 > /sys/devices/"${CAPE_MNGR}"/slots "
-sh -c "echo -6 > /sys/devices/"${CAPE_MNGR}"/slots "
-sh -c "echo BB-BONE-MARK1:00A1 > /sys/devices/"${CAPE_MNGR}"/slots "
-cat  /sys/devices/bone_capemgr.*/slots
+
+#sh -c "echo -4 > ${SLOTS}"
+#sh -c "echo -5 > ${SLOTS}"
+#sh -c "echo -6 > ${SLOTS}"
+sh -c "echo BB-BONE-MARK1:00A1 > ${SLOTS}"
+
+cat ${SLOTS}
 
 if [ "$bDma" ];then
 	insmod mark1_dma.ko
 else
 	insmod mark1_dm.ko
 fi
-
