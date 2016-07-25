@@ -114,6 +114,8 @@ int logi_dma_open(struct drvr_mem* mem_dev, dma_addr_t *physbuf)
 	conf.direction = DMA_MEM_TO_MEM;
 	/*conf.dst_addr_width = DMA_SLAVE_BUSWIDTH_2_BYTES;*/
 	dmaengine_slave_config(mem_dev->dma.chan, &conf);
+
+	DBG_LOG("Using Linux DMA Engine API");
 #else
 	mem_dev->dma.dma_chan = edma_alloc_channel(EDMA_CHANNEL_ANY, dma_callback,
 					       NULL, EVENTQ_0);
@@ -124,8 +126,10 @@ int logi_dma_open(struct drvr_mem* mem_dev, dma_addr_t *physbuf)
 		return mem_dev->dma.dma_chan;
 	}
 
-	DBG_LOG("EDMA channel %d reserved\n", mem_dev->dma.dma_chan);
+	DBG_LOG("Using EDMA/DMA Engine");
 #endif /* USE_DMA_ENGINE */
+
+	DBG_LOG("EDMA channel %d reserved\n", mem_dev->dma.dma_chan);
 
 	return 0;
 }
