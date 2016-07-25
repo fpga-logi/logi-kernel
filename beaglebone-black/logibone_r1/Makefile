@@ -1,7 +1,6 @@
 #The following definitions can be added to EXTRA_CFLAGS using -D<definition> to change the behaviour of certain modules
 #PROFILE: Builds modules including profiling information
 #USE_WORD_ADDRESSING: Enables WORD instead of BYTE addressing
-#USE_DMA_ENGINE: Enables Linux DMA Engine API
 EXTRA_CFLAGS=-I$(PWD) -Wall -O2
 
 # If KERNELRELEASE is defined, we've been invoked from the
@@ -17,10 +16,13 @@ ifneq ($(KERNELRELEASE),)
 else
 	KERNELDIR ?= /lib/modules/$(shell uname -r)/build
 	PWD := $(shell pwd)
+
+PHONY += default
 default:
 	$(MAKE) -C $(KERNELDIR) M=$(PWD) modules
-endif
 
+PHONY += clean
 clean:
-	rm *.o *.ko .*.cmd *.mod.c *.order *.symvers ../common/*.o ../common/.*.cmd
+	rm -f *.o *.ko .*.cmd *.mod.c *.order *.symvers ../common/*.o ../common/.*.cmd
 	rm -rf .tmp_versions
+endif
