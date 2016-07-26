@@ -311,7 +311,7 @@ static void dm_exit(void)
 	if (drvr_devices) {
 		int i;
 
-		for (i = 0; i < 2; i++) {
+		for (i = 1; i >= 0; i--) {
 			if (i == 0) {
 				i2c_unregister_device(drvr_devices[i].data.prog.i2c_io);
 			}
