@@ -11,8 +11,6 @@
 #include "drvr.h"
 #include "generic.h"
 
-#define USE_DMA_ENGINE
-
 //Since kernel 3.13 the DMA_xxx macros have been renamed to EDMA_DMA_xxx.
 #if LINUX_VERSION_CODE < KERNEL_VERSION(3,13,0)
 	#define EDMA_DMA_COMPLETE DMA_COMPLETE
