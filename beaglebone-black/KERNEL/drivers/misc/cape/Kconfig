@@ -1,5 +1,0 @@
-#
-# Capes
-#
-
-source "drivers/misc/cape/beaglebone/Kconfig"
