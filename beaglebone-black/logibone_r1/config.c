@@ -76,10 +76,10 @@ static inline void serialConfigWriteByte(unsigned char val)
 			ssiClearData();
 		}
 
-		//__delay_cycles(SSI_DELAY);	
+		//__delay_cycles(SSI_DELAY);
 		ssiSetClk();
 		valBuf = (valBuf << 1);
-		//__delay_cycles(SSI_DELAY);			
+		//__delay_cycles(SSI_DELAY);
 	}
 }
 

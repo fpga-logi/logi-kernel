@@ -98,8 +98,8 @@ static inline ssize_t writeMem(struct file *filp, const char *buf, size_t count,
 			return -EFAULT;
 		}
 
-		result = logi_dma_copy(mem_to_write, trgt_addr, src_addr,
-						    count);
+		result = logi_dma_copy(mem_to_write, trgt_addr, src_addr, count);
+
 		if (result < 0) {
 			DBG_LOG("write: Failed to trigger EDMA transfer\n");
 
@@ -128,8 +128,7 @@ static inline ssize_t writeMem(struct file *filp, const char *buf, size_t count,
 			start_profile();
 #endif
 
-			result = logi_dma_copy(mem_to_write, trgt_addr, src_addr,
-					    transfer_size);
+			result = logi_dma_copy(mem_to_write, trgt_addr, src_addr, transfer_size);
 
 			if (result < 0) {
 				DBG_LOG("write: Failed to trigger EDMA transfer\n");
@@ -218,8 +217,8 @@ static inline ssize_t readMem(struct file *filp, char *buf, size_t count, loff_t
 			start_profile();
 	#endif
 
-			result = logi_dma_copy(mem_to_read, trgt_addr, src_addr,
-					    transfer_size);
+			result = logi_dma_copy(mem_to_read, trgt_addr, src_addr, transfer_size);
+
 			if (result < 0) {
 				DBG_LOG("read: Failed to trigger EDMA transfer\n");
 

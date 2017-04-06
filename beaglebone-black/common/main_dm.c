@@ -32,12 +32,12 @@ static struct i2c_board_info io_exp_info= {
 };
 
 static struct file_operations dm_ops = {
-    .read = dm_read,
-    .write = dm_write,
-    .compat_ioctl = dm_ioctl,
-    .unlocked_ioctl = dm_ioctl,
-    .open = dm_open,
-    .release = dm_release,
+	.read = dm_read,
+	.write = dm_write,
+	.compat_ioctl = dm_ioctl,
+	.unlocked_ioctl = dm_ioctl,
+	.open = dm_open,
+	.release = dm_release,
 };
 
 
