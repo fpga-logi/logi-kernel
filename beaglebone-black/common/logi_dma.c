@@ -11,14 +11,6 @@
 #include "drvr.h"
 #include "generic.h"
 
-//Since kernel 3.13 the DMA_xxx macros have been renamed to EDMA_DMA_xxx.
-#if LINUX_VERSION_CODE < KERNEL_VERSION(3,13,0)
-	#define EDMA_DMA_COMPLETE DMA_COMPLETE
-	#define EDMA_DMA_CC_ERROR DMA_CC_ERROR
-	#define EDMA_DMA_TC1_ERROR DMA_TC1_ERROR
-	#define EDMA_DMA_TC2_ERROR DMA_TC2_ERROR
-#endif
-
 //auto detect Linux DMA Engine API
 #ifndef EDMA_DMA_COMPLETE
 #define USE_DMA_ENGINE
@@ -37,11 +29,8 @@ static void dma_callback(void *param)
 {
 	struct drvr_mem *mem_dev = (struct drvr_mem*) param;
 	struct dma_chan *chan = mem_dev->dma.chan;
-	enum dma_status status;
 
-	status = dma_async_is_tx_complete(chan, cookie, NULL, NULL);
-
-	switch (status) {
+	switch (dma_async_is_tx_complete(chan, cookie, NULL, NULL)) {
 		case DMA_COMPLETE:
 			irqraised1 = 1;
 			break;
@@ -96,6 +85,7 @@ int logi_dma_open(struct drvr_mem* mem_dev, dma_addr_t *physbuf)
 
 	if (!mem_dev->dma.buf) {
 		DBG_LOG("failed to allocate DMA buffer\n");
+
 		return -ENOMEM;
 	}
 
@@ -123,6 +113,7 @@ int logi_dma_open(struct drvr_mem* mem_dev, dma_addr_t *physbuf)
 	if (mem_dev->dma.dma_chan < 0) {
 		DBG_LOG("edma_alloc_channel failed for dma_ch, error: %d\n",
 			mem_dev->dma.dma_chan);
+
 		return mem_dev->dma.dma_chan;
 	}
 
@@ -163,6 +154,7 @@ int logi_dma_copy(struct drvr_mem* mem_dev, unsigned long trgt_addr,
 
 	if (!tx) {
 		DBG_LOG("device_prep_dma_memcpy failed\n");
+
 		return -ENODEV;
 	}
 
@@ -196,6 +188,7 @@ int logi_dma_copy(struct drvr_mem* mem_dev, unsigned long trgt_addr,
 
 	if (result != 0) {
 		DBG_LOG("edma copy failed\n");
+
 		return result;
 	}
 

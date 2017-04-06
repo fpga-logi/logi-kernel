@@ -70,9 +70,8 @@ static inline void compute_bandwidth(const unsigned int nb_byte) {
 
 static inline ssize_t writeMem(struct file *filp, const char *buf, size_t count, loff_t *f_pos)
 {
-	unsigned short int transfer_size;
-	ssize_t transferred = 0;
 	unsigned long src_addr, trgt_addr;
+	int result;
 	struct drvr_mem * mem_to_write = &(((struct drvr_device *) filp->private_data)->data.mem);
 
 #ifdef USE_WORD_ADDRESSING
@@ -81,15 +80,7 @@ static inline ssize_t writeMem(struct file *filp, const char *buf, size_t count,
 
 		return -EFAULT;
 	}
-#endif
 
-	if (count < MAX_DMA_TRANSFER_IN_BYTES) {
-		transfer_size = count;
-	} else {
-		transfer_size = MAX_DMA_TRANSFER_IN_BYTES;
-	}
-
-#ifdef USE_WORD_ADDRESSING
 	trgt_addr = (unsigned long) &(mem_to_write->base_addr[(*f_pos) / 2]);
 #else
 	trgt_addr = (unsigned long) &(mem_to_write->base_addr[(*f_pos)]);
@@ -97,54 +88,82 @@ static inline ssize_t writeMem(struct file *filp, const char *buf, size_t count,
 
 	src_addr = (unsigned long) dmaphysbuf;
 
-	if (copy_from_user(mem_to_write->dma.buf, buf, transfer_size)) {
-		return -EFAULT;
-	}
-
-	while (transferred < count) {
-		int res;
-
+	if (count < MAX_DMA_TRANSFER_IN_BYTES) {
 #ifdef PROFILE
 		DBG_LOG("Write\n");
 		start_profile();
 #endif
 
-		res = logi_dma_copy(mem_to_write, trgt_addr, src_addr,
-				    transfer_size);
-		if (res < 0) {
+		if (copy_from_user(mem_to_write->dma.buf, buf, count)) {
+			return -EFAULT;
+		}
+
+		result = logi_dma_copy(mem_to_write, trgt_addr, src_addr,
+						    count);
+		if (result < 0) {
 			DBG_LOG("write: Failed to trigger EDMA transfer\n");
 
-			return res;
+			return result;
 		}
 
 #ifdef PROFILE
 		stop_profile();
-		compute_bandwidth(transfer_size);
+		compute_bandwidth(count);
 #endif
 
-		trgt_addr += transfer_size;
-		transferred += transfer_size;
+		return count;
+	} else {
+		ssize_t transferred = 0;
+		unsigned short int transfer_size;
 
-		if ((count - transferred) < MAX_DMA_TRANSFER_IN_BYTES) {
-			transfer_size = count - transferred;
-		} else {
-			transfer_size = MAX_DMA_TRANSFER_IN_BYTES;
-		}
+		transfer_size = MAX_DMA_TRANSFER_IN_BYTES;
 
-		if (copy_from_user(mem_to_write->dma.buf, &buf[transferred], transfer_size)) {
+		if (copy_from_user(mem_to_write->dma.buf, buf, transfer_size)) {
 			return -EFAULT;
 		}
-	}
 
-	return transferred;
+		while (transferred < count) {
+#ifdef PROFILE
+			DBG_LOG("Write\n");
+			start_profile();
+#endif
+
+			result = logi_dma_copy(mem_to_write, trgt_addr, src_addr,
+					    transfer_size);
+
+			if (result < 0) {
+				DBG_LOG("write: Failed to trigger EDMA transfer\n");
+
+				return result;
+			}
+
+			trgt_addr += transfer_size;
+			transferred += transfer_size;
+
+			if ((count - transferred) < MAX_DMA_TRANSFER_IN_BYTES) {
+				transfer_size = count - transferred;
+			} else {
+				transfer_size = MAX_DMA_TRANSFER_IN_BYTES;
+			}
+
+			if (copy_from_user(mem_to_write->dma.buf, &buf[transferred], transfer_size)) {
+				return -EFAULT;
+			}
+
+#ifdef PROFILE
+			stop_profile();
+			compute_bandwidth(transfer_size);
+#endif
+		}
+
+		return transferred;
+	}
 }
 
 static inline ssize_t readMem(struct file *filp, char *buf, size_t count, loff_t *f_pos)
 {
-	unsigned short int transfer_size;
-	ssize_t transferred = 0;
 	unsigned long src_addr, trgt_addr;
-
+	int result;
 	struct drvr_mem * mem_to_read = &(((struct drvr_device *) filp->private_data)->data.mem);
 
 #ifdef USE_WORD_ADDRESSING
@@ -153,15 +172,7 @@ static inline ssize_t readMem(struct file *filp, char *buf, size_t count, loff_t
 
 		return -EFAULT;
 	}
-#endif
 
-	if (count < MAX_DMA_TRANSFER_IN_BYTES) {
-		transfer_size = count;
-	} else {
-		transfer_size = MAX_DMA_TRANSFER_IN_BYTES;
-	}
-
-#ifdef USE_WORD_ADDRESSING
 	src_addr = (unsigned long) &(mem_to_read->base_addr[(*f_pos) / 2]);
 #else
 	src_addr = (unsigned long) &(mem_to_read->base_addr[(*f_pos)]);
@@ -169,42 +180,73 @@ static inline ssize_t readMem(struct file *filp, char *buf, size_t count, loff_t
 
 	trgt_addr = (unsigned long) dmaphysbuf;
 
-	while (transferred < count) {
-		int res;
+	if (count < MAX_DMA_TRANSFER_IN_BYTES) {
 
 #ifdef PROFILE
 		DBG_LOG("Read\n");
 		start_profile();
 #endif
 
-		res = logi_dma_copy(mem_to_read, trgt_addr, src_addr,
-				    transfer_size);
-		if (res < 0) {
+		result = logi_dma_copy(mem_to_read, trgt_addr, src_addr, count);
+
+		if (result < 0) {
 			DBG_LOG("read: Failed to trigger EDMA transfer\n");
 
-			return res;
+			return result;
 		}
 
-		if (copy_to_user(&buf[transferred], mem_to_read->dma.buf, transfer_size)) {
+		if (copy_to_user(buf, mem_to_read->dma.buf, count)) {
 			return -EFAULT;
 		}
 
 #ifdef PROFILE
 		stop_profile();
-		compute_bandwidth(transfer_size);
+		compute_bandwidth(count);
 #endif
 
-		src_addr += transfer_size;
-		transferred += transfer_size;
+		return count;
+	} else {
+		ssize_t transferred = 0;
+		unsigned short int transfer_size;
 
-		if ((count - transferred) < MAX_DMA_TRANSFER_IN_BYTES) {
-			transfer_size = (count - transferred);
-		} else {
-			transfer_size = MAX_DMA_TRANSFER_IN_BYTES;
+		transfer_size = MAX_DMA_TRANSFER_IN_BYTES;
+
+		while (transferred < count) {
+
+	#ifdef PROFILE
+			DBG_LOG("Read\n");
+			start_profile();
+	#endif
+
+			result = logi_dma_copy(mem_to_read, trgt_addr, src_addr,
+					    transfer_size);
+			if (result < 0) {
+				DBG_LOG("read: Failed to trigger EDMA transfer\n");
+
+				return result;
+			}
+
+			if (copy_to_user(&buf[transferred], mem_to_read->dma.buf, transfer_size)) {
+				return -EFAULT;
+			}
+
+	#ifdef PROFILE
+			stop_profile();
+			compute_bandwidth(transfer_size);
+	#endif
+
+			src_addr += transfer_size;
+			transferred += transfer_size;
+
+			if ((count - transferred) < MAX_DMA_TRANSFER_IN_BYTES) {
+				transfer_size = (count - transferred);
+			} else {
+				transfer_size = MAX_DMA_TRANSFER_IN_BYTES;
+			}
 		}
-	}
 
-	return transferred;
+		return transferred;
+	}
 }
 
 static int dm_open(struct inode *inode, struct file *filp)
