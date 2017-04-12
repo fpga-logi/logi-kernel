@@ -11,17 +11,7 @@
 #include "drvr.h"
 #include "generic.h"
 
-#define USE_DMA_ENGINE
-
-//Since kernel 3.13 the DMA_xxx macros have been renamed to EDMA_DMA_xxx.
-#if LINUX_VERSION_CODE < KERNEL_VERSION(3,13,0)
-	#define EDMA_DMA_COMPLETE DMA_COMPLETE
-	#define EDMA_DMA_CC_ERROR DMA_CC_ERROR
-	#define EDMA_DMA_TC1_ERROR DMA_TC1_ERROR
-	#define EDMA_DMA_TC2_ERROR DMA_TC2_ERROR
-#endif
-
-//auto detect Linux DMA Engine API
+//auto detect Linux DMA Engine API (Kernel 4.4+)
 #ifndef EDMA_DMA_COMPLETE
 #define USE_DMA_ENGINE
 #endif
@@ -39,11 +29,8 @@ static void dma_callback(void *param)
 {
 	struct drvr_mem *mem_dev = (struct drvr_mem*) param;
 	struct dma_chan *chan = mem_dev->dma.chan;
-	enum dma_status status;
 
-	status = dma_async_is_tx_complete(chan, cookie, NULL, NULL);
-
-	switch (status) {
+	switch (dma_async_is_tx_complete(chan, cookie, NULL, NULL)) {
 		case DMA_COMPLETE:
 			irqraised1 = 1;
 			break;
@@ -98,6 +85,7 @@ int logi_dma_open(struct drvr_mem* mem_dev, dma_addr_t *physbuf)
 
 	if (!mem_dev->dma.buf) {
 		DBG_LOG("failed to allocate DMA buffer\n");
+
 		return -ENOMEM;
 	}
 
@@ -109,8 +97,9 @@ int logi_dma_open(struct drvr_mem* mem_dev, dma_addr_t *physbuf)
 	dma_cap_set(DMA_MEMCPY, mask);
 	mem_dev->dma.chan = dma_request_channel(mask, NULL, NULL);
 
-	if (!mem_dev->dma.chan)
+	if (!mem_dev->dma.chan) {
 		return -ENODEV;
+	}
 
 	/* Configure DMA channel */
 	conf.direction = DMA_MEM_TO_MEM;
@@ -119,12 +108,11 @@ int logi_dma_open(struct drvr_mem* mem_dev, dma_addr_t *physbuf)
 
 	DBG_LOG("Using Linux DMA Engine API");
 #else
-	mem_dev->dma.dma_chan = edma_alloc_channel(EDMA_CHANNEL_ANY, dma_callback,
-					       NULL, EVENTQ_0);
+	mem_dev->dma.dma_chan = edma_alloc_channel(EDMA_CHANNEL_ANY, dma_callback, NULL, EVENTQ_0);
 
 	if (mem_dev->dma.dma_chan < 0) {
-		DBG_LOG("edma_alloc_channel failed for dma_ch, error: %d\n",
-			mem_dev->dma.dma_chan);
+		DBG_LOG("edma_alloc_channel failed for dma_ch, error: %d\n", mem_dev->dma.dma_chan);
+
 		return mem_dev->dma.dma_chan;
 	}
 
@@ -143,12 +131,10 @@ void logi_dma_release(struct drvr_mem* mem_dev)
 #else
 	edma_free_channel(mem_dev->dma.dma_chan);
 #endif /* USE_DMA_ENGINE */
-	dma_free_coherent(NULL, MAX_DMA_TRANSFER_IN_BYTES, mem_dev->dma.buf,
-			  dmaphysbuf);
+	dma_free_coherent(NULL, MAX_DMA_TRANSFER_IN_BYTES, mem_dev->dma.buf, dmaphysbuf);
 }
 
-int logi_dma_copy(struct drvr_mem* mem_dev, unsigned long trgt_addr,
-		  unsigned long src_addr, int count)
+int logi_dma_copy(struct drvr_mem* mem_dev, unsigned long trgt_addr, unsigned long src_addr, int count)
 {
 	int result = 0;
 
@@ -165,6 +151,7 @@ int logi_dma_copy(struct drvr_mem* mem_dev, unsigned long trgt_addr,
 
 	if (!tx) {
 		DBG_LOG("device_prep_dma_memcpy failed\n");
+
 		return -ENODEV;
 	}
 
@@ -198,6 +185,7 @@ int logi_dma_copy(struct drvr_mem* mem_dev, unsigned long trgt_addr,
 
 	if (result != 0) {
 		DBG_LOG("edma copy failed\n");
+
 		return result;
 	}
 
